@@ -1,0 +1,9 @@
+base
+knitr
+rmarkdown
+rzine
+dplyr
+ggplot2
+quanteda
+tidytext
+readtext
