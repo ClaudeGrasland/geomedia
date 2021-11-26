@@ -5,8 +5,8 @@ date: "`r Sys.Date()`"
 author: 
  - name: Claude Grasland
    affiliation: Université de Paris (Diderot), FR 2007 CIST, UMR 8504 Géographie-cités
-image: "network.png"   
-logo: "figures/rzine.png"  
+image: "figures/network.jpg"   
+logo: "figures/logo_geoprisme.jpg"  
 output:
   rzine::readrzine:
     highlight: kate
@@ -32,6 +32,9 @@ library(ggplot2)
 library(quanteda)
 library(tidytext)
 library(readtext)
+
+library(WikidataR)
+
 
 ## Global options
 options(max.print="75")
@@ -715,6 +718,236 @@ It is now possible to develop a global research strategy for the analysis of wor
 **6. Extract the dictionary of recognition of entities** : which can be done in a multilanguage perspective. 
 
 It is obviously possible to apply the same procedure to different objects like states, capital cities, organizations, people, etc... 
+
+
+
+
+
+## Dictionary of states
+
+We discuss in this section the steps (automatic or manual) that are requested for the creation of a dictionary of states, applied to the case of french language.
+
+
+### Link wikipedia entities with states
+
+
+
+```{r}
+ent<-read.table("data/states_codes.csv", 
+                sep=";",
+                header=T,
+                encoding = "UTF-8")
+kable(head(ent))
+```
+
+
+### Extract définitions
+
+We extract the definitions of the regions in one or different languages with the function *extract_def()*
+
+```{r, echo=FALSE}
+
+extract_def <- function(item = c("Q15", "Q246"),
+                        langs = c("fr","de","en","tr","ar")) {
+  # Create empty dataset
+  res<-data.frame()
+  res$id    <- as.character()
+  res$lang  <- as.character()
+  res$label <- as.character()
+  res$desc  <- as.character()
+  
+  
+  # Loop of items
+  n <- length(item)
+  for (i in 1:n) {
+    
+     # Extract item properties
+    item_prop <- get_property(item[i])[[1]]
+  
+   
+     # Loop  of language
+     p<-length(langs)
+     for (j in 1:p) {
+        id <- item[i]
+        lang  <- langs[j]
+        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value}
+           else { label <- NA}
+        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}
+           else { desc <- NA}
+        add <-data.frame(id,lang,label,desc)
+        res<- rbind(res,add) 
+        }
+  
+  }
+  # Export result
+return(res)
+
+}
+extract_alias <- function(items = c("Q15", "Q258"),
+                          langs = c("fr","de","en","tr","ar")) {
+  # Create empty dataset
+  res<-data.frame()
+  res$id    <- as.character()
+  res$lang  <- as.character()
+  res$label <- as.character()
+
+  
+  # Loop of items
+  n <- length(items)
+  for (i in 1:n) {
+    
+     # Extract item properties
+    item_prop <- get_property(items[i])[[1]]
+  
+   
+     # Loop  of language
+     p<-length(langs)
+     for (j in 1:p) {
+        id <- items[i]
+        lang  <- langs[j]
+        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value} else { label <- NA}
+        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}else { desc <- NA}
+        add <-data.frame(id,lang,label)
+        res<- rbind(res,add) 
+           # Loop of aliases
+              if (is.null(item_prop[["aliases"]][[lang]])==F) {
+                ali <- item_prop[["aliases"]][[lang]]$value
+                n<-length(ali)
+               for (k in 1:n) {
+                        label <- ali[k]
+                        add <-data.frame(id,lang,label)
+                        res<- rbind(res,add) 
+                  }
+              }
+        
+        }
+  
+  }
+  # Export result
+return(res)
+
+}
+```
+
+
+In our example, we extract the definition of the target entities in french language. This operation can take several minutes as the number of entities is important.
+
+```{r, eval=FALSE}
+## NOT RUN : need several minutes !!!##
+wiki_def <- extract_def(ent$wiki,c("fr"))
+
+write.table(x = wiki_def,
+             row.names = FALSE,
+              file = "data/states_wiki_def.csv",
+              fileEncoding = "UTF-8",
+              sep = ";")
+saveRDS(object = wiki_def, file = "data/states_wiki_def.RDS")
+
+```
+
+
+
+```{r, echo=FALSE}
+wiki_def<-readRDS("data/states_wiki_def.RDS")
+kable(head(wiki_def))
+```
+
+The dictionary of entities is now available in the target language and we can verify manually that all definitions exist. It can indeed happen that a wikipedia entity is not defined in one or several language. In this case, it is necessary to complete manually. 
+
+
+
+### Extract of aliases and creation of wiki dictionary
+
+We will know extract the aliases of each wikipedia object in our target language. As in the previous case, the operation can take some minutes when the list of entities is long as in present case.
+
+```{r, eval=FALSE}
+## NOT RUN : very long time ...###
+wiki_def <- readRDS("data/states_wiki_def.RDS")
+
+wiki_dict <- extract_alias(wiki_def$id, c("fr"))
+
+write.table(x = wiki_dict,
+              row.names = FALSE,
+              file = "data/states_wiki_dict.csv",
+              fileEncoding = "UTF-8",
+              sep = ";")
+saveRDS(object = wiki_dict, file = "data/states_wiki_dict.RDS")
+
+```
+
+
+The list of alias is interesting for a better recognition of the states, as we can see with the example of Switzerland : 
+
+
+```{r, echo=FALSE}
+wiki_dict <- readRDS("data/states_wiki_dict.RDS")
+kable(wiki_dict[wiki_dict$id=="Q39",])
+```
+But the list has to be carefully checked and verified because Wikipedia can introduce a lot of terms that are ambiguous and could produce false positive. In particular, wikipedia introduce the ISO3 and ISO2 codes of states which can produce a lot of mistakes. Just consider the case of the ISO2 code of  Austria (*"AU"*) which will create a lot of false positive if we try to look for the word in lower case.  On the other hand, it is not possible to eliminate aliases based on a minimu number of characters because in this case we could eliminate *"EU"* if we are looking for European Union in english news. Finally it appears necessary :
+
+1. to examine manually the list of aliases and eliminate the one that are not relevant. 
+2. to identify aliases that are associated to several different entities and to decide either to eliminate them or to limit them to one wiki entity. For example "Singapour" should be allowed only to the state name or the city name. 
+3. to identify ambiguous cases that can not be solved automatically and desserve more sophisticated methods. As an example, it is impossible to decide automatically if "Brussels" is associated to Belgium or European Union in a news. 
+4. To be very careful with the apostroph  that can take different forms in terms of encoding. Personally we prefer to replace all forms of apostroph by a blank character but it can be a matter of debate.
+
+Once the manual work is finished the dictionary of wiki entities is updated with a new version number.
+
+```{r}
+wiki_dict <- read.table("data/states_wiki_dict_V2.csv",
+                      header = T,
+                      encoding = "UTF-8",
+                      sep=";")
+saveRDS(object = wiki_dict, file = "data/states_wiki_dict_V2.RDS")
+```
+
+
+### Creation of a unified dictionary of states
+
+In Wikipedia's ontology we have kept a distinction between entities related to states' names and entities related to capital cities of states. But it is possible that in our target ontology this distinction does no more exist and what we are looking for is a unified dictionary of states linked to an ISO3 code in order to produce map. In this case, we have to produce a dictionary of states that will merge names and capital city. To achieve this task we load our initial dictionary of states codes with the dictionary of wiki entities and we eliminate the duplicates.
+
+```{r}
+ent<-read.table("data/states_codes.csv", 
+                sep=";",
+                header=T,
+                encoding = "UTF-8")
+ent<-ent[,c(1,3,4,5)]
+
+wiki_dict<-wiki_dict <- read.table("data/states_wiki_dict_V2.csv",
+                      header = T,
+                      encoding = "UTF-8",
+                      sep=";")
+geo_dict<-merge(wiki_dict, ent, by.x="id",by.y="wiki",all.x=T,all.y=F)
+geo_dict<-unique(geo_dict)
+geo_dict<-geo_dict[order(geo_dict$iso3),]
+
+write.table(x = geo_dict,
+              row.names = FALSE,
+              file = "data/states_geo_dict.csv",
+              fileEncoding = "UTF-8",
+              sep = ";")
+saveRDS(object = geo_dict, file = "data/states_geo_dict.RDS")
+
+```
+
+
+
+We have obtained finally a dictionary where the column "label" is associated to  textual entities that can be associated to three different codes :
+
+- the Wikipedia entity 
+- the ISO3 code of states with the type of attribute (state or capital)
+- the ISO3 code of states
+
+It is therefore possible to use different strategies of states recognition in the analysis that will be further developed. Consider for example the case of Belgium :
+
+```{r}
+kable(geo_dict[geo_dict$iso3=="BEL",])
+```
+
+We can decide to recognize the country only by the name of the country, or we can combine both criteria or keep all labels except the first one because it is likely to be a metaphor of EU ...
+
+
+
+
 
 
 
