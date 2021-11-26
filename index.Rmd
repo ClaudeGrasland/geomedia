@@ -27,6 +27,7 @@ library(knitr)
 library(rzine)
 library(dplyr)
 library(ggplot2)
+library(data.table)
 
 # text mining packages
 library(quanteda)
@@ -55,7 +56,7 @@ opts_chunk$set(echo=TRUE,
 
 # Introduction {-}
 
-# DATA COLLECTION
+# CORPUS COLLECTION : WHO AND WHEN 
 
 ## Importation of RSS
 
@@ -308,30 +309,21 @@ str(td)
 ```
 
 
-# GEOGRAPHICAL TAGS
+# DICTIONARIES AND TAGS : WHAT AND WHERE
 
 
 
 
-The objective of this secion is to explore the possibility of Wikipedia and related tools (Wikidata, Wikimedia, ...)  for the production of multilingual dictionaries ofgeographical objects like states, cities, continents, regional organization,... In order to test the interest of this approach, we will try to produce multilingual dictionaries for the identification of different types of entities. For example : 
-
-- Europe and its subregions 
-- Africa and its subregions
-- Asia and its subregions
-- Mediterranea 
-- Middle East, Near East, Persian Gulf ...
-
-
-The dictionary will be established in four languages in order to check if the results are really comparable and if it is possible to elaborate cross-language analysis of media.
-
-- english : applied to media of UK and Ireland
-- french : applied to media of France and Tunisia
-- german : applied to media of Germany
-- turkish : applied to media of Turkey
+The objective of this section is to explore the possibility of Wikipedia and related tools (Wikidata, Wikimedia, ...)  for the production of multilingual dictionaries dedicated to the identification of geographical objects (WHERE) or different topics (WHAT) that are mentioned in the news
+l
+The ambition is to produce dictionaries in different languages in order to check if the results are really comparable and if it is possible to elaborate cross-language analysis of a corpus of media from different countries in different languages.
 
 
 
 ## Wikipedia entities
+
+
+
 
 [Wikidata](https://www.wikidata.org/wiki/Wikidata:Main_Page) defines itself as
 
@@ -391,10 +383,7 @@ which is **not equivalent** to the question
 
 
 
-
-
-
-## The package WikidataR
+### The package WikidataR
 
 The package [WikidataR](https://cran.r-project.org/web/packages/WikidataR/WikidataR.pdf) is an interface for the use of the Wikidata API in R language. Equivalent tools are available in Python and other languages for those non familiar with R. And it is of course possible to use directly the API. The first step is to install the most recent version of the R package `WikidataR` which install also related packages of interest.
 
@@ -723,7 +712,7 @@ It is obviously possible to apply the same procedure to different objects like s
 
 
 
-## Dictionary of states
+## Geographical tags (WHERE)
 
 We discuss in this section the steps (automatic or manual) that are requested for the creation of a dictionary of states, applied to the case of french language.
 
@@ -945,6 +934,246 @@ kable(geo_dict[geo_dict$iso3=="BEL",])
 
 We can decide to recognize the country only by the name of the country, or we can combine both criteria or keep all labels except the first one because it is likely to be a metaphor of EU ...
 
+
+### Extract tags function
+
+
+We have  elaborated a function for the extraction of geographical units based on the dictionary elaborated in previous section (dict) according to the language (lang), the decision to split some tokens (split) to move or not to lower case (tolow)  and the possibility to add a list of compounds to be realized (comps) in order to eliminate ambiguities. 
+
+
+```{r}
+extract_tags <- function(qd = qd,                      # the corpus of interest
+                         lang = "fr",                  # the language to be used
+                         dict = dict,                  # the dictionary of target 
+                         code = "id" ,                  # variable used for coding
+                         name = "tags",                   #name of tags"
+                         split  = c("'","’","-"),       # split list
+                         tolow = FALSE  ,                # Tokenize text
+                         comps = c("Afrique du sud")  # compounds
+                         )
+{ 
+
+
+  
+# Tokenize  
+x<-as.character(qd)
+
+
+if(length(split) > 0) { reg<-paste(split, collapse = '|')
+                       x <- gsub(reg," ",x)}  
+if(tolow) { x <- tolower(x)} 
+toks<-tokens(x)
+
+# compounds
+if(length(split) > 0) { reg<-paste(split, collapse = '|')
+                       comps<- gsub(reg," ",comps)}  
+if(tolow)       {comps <- tolower(comps)}  
+toks<-tokens_compound(toks,pattern=phrase(comps))
+
+  
+# Load dictionaries and create compounds
+
+  ## Target dictionary
+dict<-dict[dict$lang==lang & is.na(dict$label)==F,]
+target<-dict[ntoken(dict$label)>1,]
+labels <-dict$label
+if(length(split) > 0) { reg<-paste(split, collapse = '|')
+                       labels<- gsub(reg," ",labels)}  
+if(tolow)       {labels <- tolower(labels)}  
+toks<-tokens_compound(toks,pattern=phrase(labels))
+  
+ # create quanteda dictionary
+keys <-gsub(" ","_",labels)
+qd_dict<-as.list(keys)
+names(qd_dict)<-dict[[code]]
+qd_dict<-dictionary(qd_dict,tolower = FALSE)
+
+# Identify geo tags (states or reg or org ...)
+toks_tags <- tokens_lookup(toks, qd_dict, case_insensitive = F)
+toks_tags <- lapply(toks_tags, unique)
+toks_tags<-as.tokens(toks_tags)
+list_tags<-function(x){res<-paste(x, collapse=' ')}
+docvars(qd)[[name]]<-as.character(lapply(toks_tags,FUN=list_tags))
+docvars(qd)[[paste("nb_",name,sep="")]]<-ntoken(toks_tags)
+
+
+
+# Export results
+return(qd)
+ }
+            
+```
+
+The function looks rather complex but its application is relatively simple. Let us apply it to the corpus of news that we have collected in the first part.
+
+### Identification of foreign states
+
+Here we decide to use the ISO3 code and to create a column of tag that will indicate the list of  states mentioned in each news and add a column indicating the number of states found. For the moment we keep the country where the newspaper is located in the list of countries identified.But wif we want to focus on *foreign* countries it will be possible to eliminate it later.
+
+```{r}
+
+dict<-readRDS("data/states_geo_dict.RDS")
+
+
+
+qd <- readRDS("data/fr_TUN_ecomag.RDS")
+
+docvars(qd)<-docvars(qd)[c("source","date")]
+qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
+
+frcomps<-c("France Inter", "France Info","France Soir",
+           "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
+
+qd <- extract_tags (qd = qd,
+                     lang="fr",
+                     dict = dict,
+                     code = "iso3",
+                     name = "states",
+                     split = c("'","’","-"),
+                     comps = frcomps,
+                     tolow = FALSE)
+
+
+saveRDS(qd,"data/fr_TUN_ecomag_geo.RDS")
+
+
+table(qd$nb_states)
+
+```
+
+### Validation of results
+
+For the validation of results, we extract from the quanteda object a table that contains only the text of news, the tags and the number of tags. You can see below the news where the most important number of foreign states has been found :
+
+
+```{r}
+check<-data.frame(text=as.character(qd),states=qd$states,nb_states=qd$nb_states)
+check<-check[order(check$nb_states,decreasing = T),]
+kable(check[1:10,])
+```
+Looking at this table, it is possible to check 
+
+- the existence of **false positive** i.e. countries that has been identified but are not present . In our small sample of news. For example, we notice here a false identification of Palestinian territories in the news 1285190782 which is due to the name *Azza* that has been added by Wikipedia to the dictionary as a label related to the city of Gaza.  
+
+- the existence of **false negative** i;e. countries that has not been identified but are present in the news according to an expert observer. For example, the Canada has not been identified in the news 1557214307 which is really mysterious as the label *Canada* is present in the dictionary. It can be due to the presence of an invisible character ? More logical is the fact that Nigeria is not identified in the news 	1942722871 because *Lagos* is not the capital city of these country and is not present in the dictionary.
+
+
+One more time, the manual analysis of results appears necessary and will certainly oblige to repeat several time the last stage of the pipeline until the elaboration of a sufficiently efficient dictionary. 
+
+## Topical tags (WHAT)
+
+
+### Brexit mean Brexit !
+
+The most simple case of definition of a topic is the case where it can be define by a single word. A good example of that can be the identification of news where the word "*Brexit*" is present. The problems of translation are generally limited in the majority of languages that use the same word than in English language or a single one.
+
+We can therefore create easily a dictionary with the minimum of columns required
+
+```{r}
+code =c("brex","brex")
+label=c("brexit","Brexit")
+lang = c("fr","fr")
+dict <- data.frame(code,label,lang)
+dict
+```
+
+Then we apply the function extract_tags that we have seen in the previous section :
+
+```{r}
+
+qd <- readRDS("data/fr_TUN_ecomag.RDS")
+
+qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
+
+frcomps<-c("France Inter", "France Info","France Soir",
+           "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
+
+qd <- extract_tags (qd = qd,
+                     lang="fr",
+                     dict = dict,
+                     code = "code",
+                     name = "brex",
+                     split = c("'","’","-"),
+                     comps = frcomps,
+                     tolow = FALSE)
+
+table(qd$nb_brex)
+
+```
+
+The results are rather disappointing as we find only 7 news related to Brexit in our corpus. So we can have a look at this news but it is not interesting to store the tags :
+
+```{r}
+w<-tidy(corpus_subset(qd,nb_brex>0))
+kable(w)
+```
+
+### The Covid-19/Coronavirus crisis
+
+Considering the period of observation (2019-2021), we can expect more interesting results if we choose the pandemic of covid-19/coronavirus as target of our analysis. Here, the creation of the dictionary is a bit more complex because the pandemic has been qualified by different words or groups of words, with changes through time. We need therefore to analyze carefully the texts before to elaborate the dictionary. Let's start with a set of three words :
+
+```{r}
+code =c("cov","cov","cov","cov","cov","cov","cov")
+label=c("covid","Covid", "Covid-19", "covid-19","coronavirus", "Coronavirus","corona virus")
+lang = c("fr","fr","fr","fr","fr","fr","fr")
+dict <- data.frame(code,label,lang)
+kable(dict)
+```
+
+
+Then we apply the function extract_tags that we have seen in the previous section : 
+
+```{r}
+
+qd <- readRDS("data/fr_TUN_ecomag.RDS")
+
+qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
+
+frcomps<-c("France Inter", "France Info","France Soir",
+           "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
+
+qd <- extract_tags (qd = qd,
+                     lang="fr",
+                     dict = dict,
+                     code = "code",
+                     name = "cov",
+                     split = c("'","’","-"),
+                     comps = frcomps,
+                     tolow = FALSE)
+
+table(qd$nb_cov)
+
+```
+Now, more than 10% of the news are related to the pandemic and we can have a look at the first news published in the newspaper at the beginning of the crisis :
+
+
+```{r}
+w<-tidy(corpus_subset(qd,nb_cov>0))
+w<-w[order(w$date),]
+kable(head(w,20))
+```
+
+The chronology of news defines an interesting storyline that deserve a qualitative analysis.But we can also try to have a quantitative view of theproportion of news related to the new pandemics during the period of observation.  
+
+```{r}
+w<-docvars(qd)
+chrono <-data.table(w)
+chrono$week = cut(chrono$date,breaks = "week")
+chrono$pandemic = as.factor(chrono$nb_cov !=0)
+levels(chrono$pandemic)<-c("No","Yes")
+chrono <- chrono[,list(nb=.N),list(week,pandemic)]
+chrono <- dcast(chrono, formula = week~pandemic, value.var="nb",fill = 0) 
+chrono$tot <-chrono$No+chrono$Yes
+chrono$pct<-100*chrono$Yes/chrono$tot
+chrono$week<-as.Date(chrono$week)
+plot(chrono$week,chrono$pct,
+      type="l",col="red",lwd=1,
+      xlab= "Time distribution by week",
+      ylab = "% of news",
+      main= "Share of news related to the topic",
+     sub = "source : Mediacloud")
+  
+```
 
 
 
