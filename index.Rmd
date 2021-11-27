@@ -27,6 +27,7 @@ library(knitr)
 library(rzine)
 library(dplyr)
 library(ggplot2)
+library(plotly)
 library(data.table)
 
 # text mining packages
@@ -1153,27 +1154,21 @@ w<-w[order(w$date),]
 kable(head(w,20))
 ```
 
-The chronology of news defines an interesting storyline that deserve a qualitative analysis.But we can also try to have a quantitative view of theproportion of news related to the new pandemics during the period of observation.  
+The chronology of news defines an interesting storyline that deserve a qualitative analysis.But we can also try to have a quantitative view of the proportion of news related to the new pandemics during the period of observation.  
 
 ```{r}
-w<-docvars(qd)
-chrono <-data.table(w)
-chrono$week = cut(chrono$date,breaks = "week")
-chrono$pandemic = as.factor(chrono$nb_cov !=0)
-levels(chrono$pandemic)<-c("No","Yes")
-chrono <- chrono[,list(nb=.N),list(week,pandemic)]
-chrono <- dcast(chrono, formula = week~pandemic, value.var="nb",fill = 0) 
-chrono$tot <-chrono$No+chrono$Yes
-chrono$pct<-100*chrono$Yes/chrono$tot
-chrono$week<-as.Date(chrono$week)
-plot(chrono$week,chrono$pct,
-      type="l",col="red",lwd=1,
-      xlab= "Time distribution by week",
-      ylab = "% of news",
-      main= "Share of news related to the topic",
-     sub = "source : Mediacloud")
+w<-docvars(qd) %>% mutate(time = cut(chrono$date,breaks = "month"),
+                          topic = as.factor(chrono$nb_cov !=0)) %>%
+                  count(time,topic) %>%
+                  plot_ly(x = ~time, y = ~n, color = ~topic) %>%
+                        add_bars() %>%
+                        layout(barmode = "stack")
+
+w
   
 ```
+
+
 
 
 
