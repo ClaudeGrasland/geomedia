@@ -4,3 +4,6 @@
 .Ruserdata
 index_cache/
 bib/
+data/
+geomedia/
+index_2.Rmd
