@@ -1,6 +1,6 @@
 ---
 title: "Geographical analysis of media"
-subtitle: "4. Hypercubess"
+subtitle: "4. Hypercubes creation"
 author: "Claude Grasland"
 output: html_notebook
 ---
@@ -25,7 +25,9 @@ This section is based on the TELEMAC application elaborated during the H2020 pro
 
 Our objective is to elaborate an hypercube organised by different dimensions. As an example, we suppose that we are interested in the analysis of the crisis of migrant and refugees (what) in different newspapers (who), at different period of time (when) and we want to explore the locations of countries that are mentioned (where) and eventually associated together (where1.where2). Finally we want to distinguish inside the news the possible changes of results if we consider the title or the first, second and third sentences of the description (order). 
 
-## Definition of the dimensions
+
+
+## Definition of dimensions
 
 
 To illustrate this different options, we can look at the example of a news published by the Algerian newspaper El Watan the 16th September 2015 and divided in a title and three sentences of description.
@@ -70,7 +72,7 @@ For example the second sentence of our exampple ("*L’Allemagne, l’Autriche e
 
 
 
-## Hypercube function
+## Aggregation function
 
 The elaboration of the hypercube is based on the crossing of all dimensions with one line for each singular combination. To do that, we have elaborated a specific function that combine all the 6 dimensions but can be easily adapted if less dimensions are needed. 
 
@@ -183,7 +185,7 @@ kable(hcexamp)
 - *order = 4* : the last sentence of description is characterized by no topics  and no states which produce 1 lines with weight of 1.
 
 
-## Hypercube creation
+## Application
 
 Of course it is not interesting to transform a single news in such a large table. But it is of high interest if we realize the agregation on a large number of news. Because in this case the number of combination of dimensions is limited and we can obtain a synthetic table called hypercube that summarize all the information extracted from the news in a relatively small object. The time of computation of an hypercube can be relatively large and the memory size necessary to the intermediary step of disagregation can be important, but the resulting object is small and very adapted for a large number of exploration and modelisation methods.
 
@@ -219,6 +221,8 @@ hc<-hypercube( corpus   = qd,
 saveRDS(hc,"data/corpus/hc_mycorpus_states_mobil_month.RDS")
 paste("Size of resulting file = ",round(file.size("data/corpus/hc_mycorpus_states_mobil_month.RDS")/1000000,3), "Mo")
 ```
+
+
 
 
 
