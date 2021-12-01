@@ -13,6 +13,7 @@ library(dplyr)
 library(quanteda)
 library(stringr)
 
+
 ```
 
 
@@ -268,13 +269,7 @@ We store the quanteda file which combine geographical and thematic tags :
 
 ```{r}
 saveRDS(qd,"data/corpus/qd_mycorpus_geo_top.RDS")
-```
-
-We also export in .csv format for people that want to explore result out of R or want to check the quality of tags.
-
-```{r}
-td<-tidy(qd)
-write_csv2(td,"data/corpus/qd_mycorpus_geo_top.csv" )
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo_top.RDS")/1000000,3), "Mo")
 ```
 
 

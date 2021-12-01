@@ -167,7 +167,7 @@ In order to obtain a text that will be recognised as made of 2 sentences.
 Some sentences appears too short or too long for a sound analysis. Therefore, we decide to eliminate outliers based on the quantile of the numbe of tokens. In practice we decide to eliminate the sentences with more than 100 tokens or less than 3 tokensr
 
 ```{r sent_fr, eval = FALSE}
-
+t1<-Sys.time()
 dt<-readRDS("data/corpus/dt_mycorpus.RDS")
 
 
