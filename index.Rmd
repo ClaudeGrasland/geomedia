@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 author: 
  - name: Claude Grasland
    affiliation: Université de Paris (Diderot), FR 2007 CIST, UMR 8504 Géographie-cités
-image: "figures/network.jpg"   
+image: "figures/figure1.jpg"   
 logo: "figures/logo_geoprisme.jpg"  
 output:
   rzine::readrzine:
@@ -29,13 +29,17 @@ library(dplyr)
 library(ggplot2)
 library(plotly)
 library(data.table)
+library(lubridate)
+
 
 # text mining packages
 library(quanteda)
 library(tidytext)
 library(readtext)
+library(stringr)
+library(readr)
 
-library(WikidataR)
+
 
 
 ## Global options
@@ -54,900 +58,307 @@ opts_chunk$set(echo=TRUE,
 ```
 
 
-
 # Introduction {-}
 
-# CORPUS COLLECTION : WHO AND WHEN 
-
-## Importation of RSS
 
 
-### The Mediacloud database
+# Corpus preparation
 
-(tbd : presentation of the MediaCloud project)
+The aim of this section is to prepare a corpus of news related to a language and one or several  countries over a period of time. As an example, we will try to prepare a corpus of news in french (fr) related to France (FRA), Belgium (BEL) and Algeria (DZA) over a period of 2 years from 1st Jan 2014 to 31th December 2015. As news include not only titles but also descriptions, we decide to break the descriptions in sentences and keep a maximum of 2 sentences by news, with a maximum of 100 tokens by sentence. 
 
-Mediacloud can be freely used by researchers. All you have to do is to create an account at the following adress :
-
-https://explorer.mediacloud.org
+The data used in this example has been collected by the research project ANR Geomedia and are free to use for scientific and pedagogical purpose only. The content of the news should not be used or disseminated without the agreement of the newspapers.
 
 
-You have different ways to get title of news. We will focus here on a simple example of data obtained through the mediacloud interface. We suppose that you want to extract news from the Tunisian newspapers speaking from Europe.
+## Selection of media
+
+We import the data provided by each media and put them in a single data.frame. Then we select the columns of interest
+
+```{r corp_fr, eval=FALSE}
+
+# Load data with the function fread (fast) and the encoding UTF-8
+df1<-fread("data/source/fr_FRA_figaro_int.csv", encoding = "UTF-8")
+df1$media<-"fr_FRA_figaro"
 
 
+df2<-fread("data/source/fr_FRA_libera_int.csv", encoding = "UTF-8")
+df2$media<-"fr_FRA_libera"
 
-### Selection of media with source manager
+df3<-fread("data/source/fr_BEL_derheu_int.csv", encoding = "UTF-8")
+df3$media<-"fr_BEL_derheu"
 
-We use the application called *Source Manager* and we introduce a research by collection which is the most convenient to explore what is available in a country. In our example, the target country is Tunisia and we have three collections that are propsed : 
+df4<-fread("data/source/fr_BEL_lesoir_int.csv", encoding = "UTF-8")
+df4$media<-"fr_BEL_lesoir"
 
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_source_001.png")
-```
+df5<-fread("data/source/fr_DZA_elwata_int.csv", encoding = "UTF-8")
+df5$media<-"fr_DZA_elwata"
 
-We have selected the collection named "Tunisia National" because we are interested in the most important newspapers of the country. 
+df6<-fread("data/source/fr_DZA_xpress_int.csv", encoding = "UTF-8")
+df6$media<-"fr_DZA_xpress"
 
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_source_002.png")
-```
-The buble graphic on the right indicates immediately the media that has produced the highest number of news, but it is wise to explore in more details the list on the left which indicates for each media the statting date of data collection. 
-
-When a media appears interesting, we click on its name to obtain a brief summary of the metadata. For example, in the case of *L'économiste Maghrebin* the metadata indicates :
-
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_source_003.png")
-```
-
-The media looks promising,  but before to go further, it can be better to have a look at the website of the media to have a more concrete idea of the content if we don't know in advance what it is about in terms of content, what is the ideological orientation, etc. 
+# transform in data.table format
+df<-rbind(df1,df2,df3,df4,df4,df5,df6)
+rm(df1,df2,df3,df4,df5,df6)
 
 
-```{r, echo=FALSE}
-knitr::include_graphics("figures/ecomag.png")
-```
+# select column of interest
+df$id <- df$ID_Item
+df$who <- df$media
+df$when <- df$Date_Recup
+df$text <- paste(df$Titre," . ", df$Description, sep="")
+df<-df[,c("id","who","when","text")]
+df<-df[order(when),]
 
-Here we can see that this is an ecnomic journal, published in french, with news organized in concentric geographic circles (Nation > Maghreb > Africa > World) which is precisely what we are looking for in the IMAGEUN project. We will further complete the informations about this, but before to do that we have to check in more details if the production of the media is regular through time with another tool offered by mediacloud, the explorer.
+# select period of interest
+mintime<-as.Date("2014-01-01")
+maxtime<-as.Date("2015-12-31")
+df<-df[(is.na(df$when)==F),] 
+df<-df[as.Date(df$when) >= mintime,]
+df<-df[as.Date(df$when) <= maxtime,]
 
-### Checking the stability through time
+# eliminate duplicate
+df<-df[duplicated(df$text)==F,]
 
-We have clicked on *search in explorer* on the metadata page of the Source Manager and obtain a news interfacce where we modify the date to cover the full period of collection of the media (or our period of interest). In the research field, we let the search term `*` which indicates a research on all news.
-
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_explo_001.png")
-```
-
-
-Below your request, you obtain a graphic entitled *Attention Over Time* with the distribution of the number of news published per day which help you to verify if the distribution of news is regular through time. You just have to modify the type of graphic in order to visualize *Story Count* and you can choose the time span you want (day, week or month) for the evaluation of the regularity of news flow. In our example, we notice that at daily level they are some brief period of break in 2019, but the flow is reasonnabely regular with approximatively 5 news per day at the beginning and 10 to 20 in the final period. We also notice a classical week cycle with a decrease of news published during the week-end. 
-
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_explo_002.png")
-```
-
-Going down, you will find a news panel entitled *Total Attention* which gives you the total number of stories found. In our example, we have a total of 13626 stories produced by our media over the period.
-
-
-
-
-### Selection of news specifically related to a topic (option)
-
-You can eventually use Mediacloud to check the number of news produced about a specific topic, for example Europe or European Union or EU. The request shouldbe put in lower case with "" for compounds. Detailed explanation are available in the [query guide](https://mediacloud.org/support/query-guide).
-
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_explo_003.png")
-```
-This time you can use the graphic option *Stories percentage* rather than *Story count* if you want to viusalize the salience of the topic through time.
-
-```{r, echo=FALSE}
-knitr::include_graphics("figures/mc_explo_004.png")
-```
-
-In our example, we have 369 news that appears to be related to our request about Europe or EU with a relatively regular pattern at month level of 1 to 3 \% of news and exceptionaly 5 to 7 \%.
-
-### Download and storage of news
-
-According to your selection (all news or a specific topic) you will download more or less title. Here, me make the choice to get all news, which means that we have to repeat the original request with `*`.
-
-Finally, by clicking on the button *Download all story URLS*, you can get a .csv file that you can easily load in your favorite programming language as we will see in the next section.
-
-## Corpus creation 
-
-```{r}
-
-
-knitr::opts_chunk$set(cache = TRUE,
-                      echo = TRUE,
-                      comment = "")
 
 
 ```
 
-In the previous section (ref...) whe have obtained a .csv file of news collected from MediaCloud. We will try now to put this data in a standard form and we have chosen the format of the `quanteda` package as reference for data organization and storage. 
 
-But of course the researchers involved in the project can prefer to use other R packages like `tm` or `tidytext`. And they can also prefer to use another programming language for Python. It is the reason why we explain how to transform and export the data that has been prepared and harmonized with quanteda in various format like .csv or JSON. 
-
+## Check of time frequency
 
 
-We detail here an example of importation with the example of the newspaper "L'économiste maghrebin"
+### Time divisions
 
-### Importation of text to R
+We transform the previous data.frame in a data.table format for easier operations of aggregation 
 
-This step is not always obvious because many problems of encoding can appear that are more or less easy to solve. In principle , the data from Media Cloud are exported in standard `UTF-8` but as we will see it is not necessary the case. 
+```{r time div, eval = FALSE}
+dt<-as.data.table(df)
+dt$day     <- as.Date(dt$when)
+dt$week    <- cut(dt$day, "weeks", start.on.monday=TRUE)
+dt$month   <- cut(dt$day, "months")
+dt$weekday <- weekdays(dt$day)
 
-We try firstly to use the standard R function `read.csv()`: 
-
-```{r loadcsv, echo=TRUE}
-store <- "data"
-media <- "fr_TUN_ecomag"
-type <-".csv"
-
-fic <- paste(store,"/",media,type,sep="")
-
-df<-read.csv(fic,
-             sep=",",
-             header=T,
-             encoding = "UTF-8",
-             stringsAsFactors = F)
-kable(head(df))
+# Save data frame
+saveRDS(dt,"data/corpus/dt_mycorpus.RDS") 
 ```
 
-The importation was successfull for 12794 news but message of errors appeared for 3 news where R sent a message of error telling :
 
-`Error in gregexpr(calltext, singleline, fixed = TRUE) : regular expression is invalid UTF-8`
+### News by week
 
-Looking in more details, we discover also some problems of encoding in news like in the following example where the text of the news appears differently if we apply the standard functions `paste()` o0 the specialized function r `knitr::kable` for printing. 
 
-```{r}
-paste(df[9, 3])
-kable((df[9,3]))
+
+
+We examine if the distribution is regular by week for the different media of the corpus.
+
+```{r news_week_fr}
+dt<-readRDS("data/corpus/dt_mycorpus.RDS")
+news_weeks<-dt[,.(newstot=.N),by=.(week,who)]
+
+p<-ggplot(news_weeks, aes(x=as.Date(week),y=newstot, col=who))+
+   geom_line()+
+   geom_smooth(method = 'loess', formula = 'y~x')+
+   scale_y_continuous("Number of news", limits = c(0,NA)) +
+   scale_x_date("Week (starting on monday)") +
+         ggtitle(label ="Corpus : distribution of news by week",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
 ```
 
+### News by weekday
+
+We examine if the distribution is regular by weekday and check in particular the effect of the week-end.
+
+```{r news_weekdays_fr}
+#compute frequencies by weekday
+news_weekdays<-dt[,.(newstot=.N),by=.(weekday,who)]
+news_weekdays<-news_weekdays[,.(weekday,newspct=100*newstot/sum(newstot)),by=.(who)]
+
+
+# Translate weekdays in english and order
+news_weekdays$weekday<-as.factor(news_weekdays$weekday)
+levels(news_weekdays$weekday)<-c("7.Sunday","4.Wednesday","1.Monday","2.Tuesday","3.Thursday","6.Sathurday","5.Friday")
+news_weekdays$wkd<-as.factor(as.character(news_weekdays$weekday))
+news_weekdays<-news_weekdays[order(news_weekdays$weekday),]
+
+
+p<-ggplot(news_weekdays, aes(x=weekday,fill = who, y=newspct))+
+         geom_bar(position = "dodge", stat="identity")+
+         scale_y_continuous("Share of news (%)", limits = c(0,NA)) +
+         ggtitle(label ="Corpus : distribution of news by week day",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
+```
+
+
+## Transform in quanteda corpus
+
+### Reshape news by sentences
+
+The aim of this step is to harmonize the length of texts collected through rss. We decide to keep only the title of news and the two first sentences of descriptions when they are available. The result is stored in quanteda format.
+
+Unfortunately, the division in text is sentences realized by quanteda is far from perfect which is due to problems in the collection of news. For example, the following text will be considered as a single sentence because the point is not followed by a blank character.
+
+>Le conflit est terminé.Mais la Russie est-elle d'accord avec la Turquie.
+
+
+ It is necessary to add a regular expression for the cleaning of text and the inclusion of a blank space " " after each point located after a lower case character and before an upper case character :
  
-### Resolution of encoding problems
+str_replace_all(txt,"(?<=[:lower:])\\.(?=[:upper:])", "\\. ")
 
-It is sometime possible to adapt manually the encoding problem whan they are not too much as in present example. 
+In order to obtain a text that will be recognised as made of 2 sentences.
 
-```{r}
-df$text<-df$title
-# standardize apostrophe
-df$text<-gsub("&#8217;","'",df$text)
+>Le conflit est terminé. Mais la Russie est-elle d'accord avec la Turquie.
 
-# standardize punct
-df$text<-gsub('&#8230;','.',df$text)
+Some sentences appears too short or too long for a sound analysis. Therefore, we decide to eliminate outliers based on the quantile of the numbe of tokens. In practice we decide to eliminate the sentences with more than 100 tokens or less than 3 tokensr
 
-# standardize hyphens
-df$text<-gsub('&#8211;','-',df$text)
-
-# Remove quotation marks
-df$text<-gsub('&#171;&#160;','',df$text)
-df$text<-gsub('&#160;&#187;','',df$text)
-df$text<-gsub('&#8220;','',df$text)
-df$text<-gsub('&#8221;','',df$text)
-df$text<-gsub('&#8216;','',df$text)
-df$text<-gsub('&#8243;','',df$text)
-
-```
-
-
-We can introduce other cleaning procedures here or keep it for later analysis
-
-
-### Transformation in quanteda format
-
-We propose  a storage based on `quanteda` format by just transforming the data that has been produced by readtext. We keep only the name of the source and the date of publication. 
-
-```{r create quanteda, echo=T}
-
-# Create Quanteda corpus
-qd<-corpus(df,docid_field = "stories_id")
-
-
-# Select docvar fields and rename media
-qd$date <-as.Date(qd$publish_date)
-qd$source <-media
-docvars(qd)<-docvars(qd)[,c("source","date")]
+```{r sent_fr, eval = FALSE}
+t1<-Sys.time()
+dt<-readRDS("data/corpus/dt_mycorpus.RDS")
 
 
 
-
-# Add global meta
-meta(qd,"meta_source")<-"Media Cloud "
-meta(qd,"meta_time")<-"Download the 2021-09-30"
-meta(qd,"meta_author")<-"Elaborated by Claude Grasland"
-meta(qd,"project")<-"ANR-DFG Project IMAGEUN"
-
-```
+# clean sentences break (long !)
+dt$text<-str_replace_all(dt$text,"(?<=[:lower:])\\.(?=[:upper:])", "\\. ")
 
 
-We have created a quanteda object with a lot of information stored in various fields. The structure of the object is the following one
-
-```{r, echo=TRUE}
-str(qd)
-```
-
-We can look at the first titles with *head()*
-
-```{r, echo=TRUE}
-kable(head(qd,3))
-```
-
-
-We can get meta information on each stories with *summary()*
-
-```{r, echo=TRUE}
-summary(head(qd,3))
-```
-
-We can get meta information about the full document
-
-```{r, echo=TRUE}
-meta(qd)
-```
+# transform in quanteda
+qd<-corpus(dt,docid_field = "id",text_field = "text")
 
 
 
-### Storage of the quanteda object
+# break in sentences
+qd<-corpus_reshape(qd,to="sentences", use_docvars=T)
 
-We can finally save the object in .RDS format in a directory dedicated to our quanteda files. It can be usefull to give some information in the name of the file
+# Identify rank of sentences
+qd$order<-as.numeric(as.data.frame(str_split(names(qd),"\\.", simplify=T))[,2])
 
-```{r, echo=TRUE}
-store <- "data"
-type<- ".RDS"
-myfile <- paste(store,"/",media,type,sep="")
-myfile
-saveRDS(qd,myfile)
-qd[1:3]
+# Select only title + maximum of 3 sentences
+qd<-corpus_subset(qd, order < 5)
+
+# filter by number of tokens by sentence
+qd$nbt<-ntoken(texts(qd))
+#mintok<-quantile(qd$nbt,0.01)
+#maxtok<-quantile(qd$nbt,0.99)
+#qd<-corpus_subset(qd, nbt>mintok)
+qd<-corpus_subset(qd, nbt<100)
+qd<-corpus_subset(qd, nbt>2)
+
+
+
+# Save corpus in qd format
+saveRDS(qd,"data/corpus/qd_mycorpus.RDS")
+
+t2<-Sys.time()
+paste("Program executed in ", t2-t1)
+
+head(qd)
 summary(qd,3)
-
 ```
 
-We have kept all the information present in the initial file, but also added specific metadata of interest for us. The size of the storage is now equal to 0.6 Mb which means a division by 6 as compared to the initial .csv file downloaded from Media Cloud where the size was 3.8 Mb. 
+### Number of sentences by media
 
-### Back transformation to tibble
+We check the number of sentences available by title (1) and order of sentences in description (2 to 5)
 
-In the following steps, we will make an intensive use of quanteda, but sometimes it can be useful to export the results in a more practical format or to use other packages. For this reasons, it is important to know that the `tidytext`package can easily transform quanteda object in tibbles which are more classical and easy to manage and to export in other formats like data.frame or data.table. 
+```{r sent_media_fr}
+qd<-readRDS("data/corpus/qd_mycorpus.RDS")
+x<-data.table(docvars(qd))
 
-```{r}
-td <- tidy(qd)
-kable(head(td))
-str(td)
+
+tab<-x[,.(tot=.N),by=.(who,order)]
+tab<-dcast(tab,order~who)
+tab$order<-as.factor(tab$order)
+levels(tab$order)<-c("Title","Sent1","Sent2","Sent3")
+kable(tab, caption = "Distribution of title and sentences by media")
 ```
 
+### Size of texts by month
 
-# DICTIONARIES AND TAGS : WHAT AND WHERE
+We visualize the distribution of sentences of different order through time in order to prepare a decision on the length of text to be kept. 
 
+```{r sent_month_fr}
 
+tab<-x[,.(tot=.N),by=.(month,order)]
+tab$month<-as.Date(tab$month)
+tab$order<-as.factor(tab$order)
+levels(tab$order)<-c("Title","Sent1","Sent2","Sent3")
 
-
-The objective of this section is to explore the possibility of Wikipedia and related tools (Wikidata, Wikimedia, ...)  for the production of multilingual dictionaries dedicated to the identification of geographical objects (WHERE) or different topics (WHAT) that are mentioned in the news
-l
-The ambition is to produce dictionaries in different languages in order to check if the results are really comparable and if it is possible to elaborate cross-language analysis of a corpus of media from different countries in different languages.
-
-
-
-## Wikipedia entities
-
-
-
-
-[Wikidata](https://www.wikidata.org/wiki/Wikidata:Main_Page) defines itself as
-
-- a free and open knowledge base that can be read and edited by both humans and machines.
--  as central storage for the structured data of its Wikimedia sister projects including Wikipedia, Wikivoyage, Wiktionary, Wikisource, and others.
-- a support to many other sites and services beyond just Wikimedia projects! The content of Wikidata is available under a free license, exported using standard formats, and can be interlinked to other open data sets on the linked data web.
-
-### Codification of entities
-
-The first interest of wikidata is to provide unique code of identifications of objects. For example a research about "Africa" will produce a list of different objects characterized by a unique code : 
-
-```{r}
-knitr::include_graphics("figures/Wikidata001.png")
-```
-
-### Informations on entities
-
-Once we have selected an entity (e.g. **Q15**) we obtain a new page with more detailed informations in english but also in all other languages available in Wikipedia. 
-
-```{r}
-knitr::include_graphics("figures/Wikidata002.png")
-```
-
-A lot of information are available concerning the entity but, at this stage, the most important ones for our research are :
-
-1. the **translation** in different languages
-2. the **equivalent** words or expression in different languages
-3. the **definitions** in different languages
-4. the **ambiguity** of the term in each language and the potential risks of confusion with other entities.
-
-Of course we should not take for granted the answers proposed by wikidata (as noticed by Georg, Wikipedia is a matter of research for IMAGEUN ...) but without any doubt, it offers a very good opportunity to clarify our questions and help us to build tools for recognition of world regions and other geographical imaginations in a multilingual perspective. 
-
-### Wikipedia entities as nodes of an ontolongy
-
-It appears crucial to introduce here a clear distinction between **Wikipedia entities** and **textual units** associated to the names and definiton of this units. 
-
-A **wikipedia entity** like *Q15* is an **element of an ontology** designed by its author for specific purposes. The specificity of the wikidata ontology is the fact that it is a **multilinligual web** where Q15 is a **node of the web** present in different linguistic layers. It means that we don't have a single name or a  single definition of Q15, except if we adopt the neocolonial perspective to choose the english language as reference. Depending on the context (i.e. the language or sub-language), Q15 could be defined as :
-
-- (fr) : A *"continent"* named *"Afrique"*" 
-- (en) : A *"continent on the Earth's northern and southern hemispheres"* named *"Africa"* or *"African continent"* 
-- (de) : A *"Kontinent auf der Nord- und Südhalbkugel der Erde"* named *"Afrika"*
-- (tr) : A *"Dünya'nın kuzey ve güney yarıkürelerindeki bir kıta"* named *"Afrika"* or *"Afrika kıtası"*
-
-
-In other words the **existence of the same code of wikipedia entities does not offer any guarantee of concordance between the geographical objects found in news published in different languages or different countries**. But - and it is the important point - it help us to point similarities and differences between set of geographical entities that are more or less comparable in each language. 
-
-
-### A tool for cross-linguistical experiments
-
-Having in mind the limits of the equivalence of entities across languages, it can nevertheless be an interesting experience to select a set of wikipedia entities (Q15, Q258, Q4412 ...) and to examine their relative frequency in our different media from different countries with different languages. A typical hypothesis could be something like :
-
-- Is *Q15* more mentionned than *Q46* in Tunisian newspapers ?
-
-which is **not equivalent** to the question 
-
-- Is Africa more mentionned than Europe in Tunisian newspapers
-
-
-
-### The package WikidataR
-
-The package [WikidataR](https://cran.r-project.org/web/packages/WikidataR/WikidataR.pdf) is an interface for the use of the Wikidata API in R language. Equivalent tools are available in Python and other languages for those non familiar with R. And it is of course possible to use directly the API. The first step is to install the most recent version of the R package `WikidataR` which install also related packages of interest.
-
-```{r}
-#install.packages("WikidataR")
-library(WikidataR)
+       
+       p<-ggplot(tab, aes(x=month,fill = order, y=tot))+
+         geom_bar(stat="identity")+
+         ggtitle(label ="Corpus : distribution of titles and sentences by month",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
 ```
 
 
 
-(based on Etienne Toureille previous experiments)
+# Geographical tags
 
-### identification of entities of interest
+The aim of this section is to add to the quanteda corpus different metadata related to the geographical entities that are mentioned in the news. We do not discuss here the problems related to the choice of a list of entities and we just apply a method of recognition based on a dictionary. We distinguish between three categories of geographical entities : 
 
-The function `find_item` will help to find all wikipedia entities (=items) associated to a textual unit (word or group of word) in  given language. Let's start with the research of entities associated to "*Afrique*" in french language : 
+- states : recognized by a combination of country names or capital cities
+- geographical regions : based on continents or other "natural" features like sea, topography, biogeography, ...
+- international organizations ; based on a list established with wikipedia.
 
-```{r}
-mytext <- "Afrique"
-
-items <- find_item(search_term = mytext,
-                   language = "fr",
-                   limit=30)
-class(items)
-length(items)
-
-```
-The resulting object is an object from type `find_item` which is in practice a `list` describing the entities that has been recognized associated to the textual unit that we have chosen. In the french cas, we have found 50 entities that match with our textual unit. Let's have a look at the first one :
-
-```{r}
-items[[1]]
-```
-
-As we can see we can easily identify the code the label and description in english but also the text responsible from the matching answer in french. We can therefore create a function `item_info` that extract all elements of interest and put them in a table in order to have a complete view.
+More details on the methodology for the creation of dictionaries are discussed in the media cookbook. 
 
 
-```{r}
-item_info <- function(my_item){ 
-  
+## Preparation of data
 
-    if (is.null(my_item$id) == F){item_id = my_item$id}
-        else {item_id  = NA}
-  
-    if (is.null(my_item$label) ==F){item_label = my_item$label}
-        else {item_label  = NA}
-  
-    if (is.null(my_item$desc) == F) {item_desc= my_item$desc}
-        else {item_desc  = NA}
-  
-    if (is.null(my_item$match$lang) ==F){item_lang = my_item$match$lang}
-        else {item_lang  = NA}
-  
-    if (is.null(my_item$match$text) ==F){item_text = my_item$match$text}
-        else {item_text  = NA}
+### Load list and definition of entities
 
-  
-  res<-data.frame(item_id,item_label,item_desc,item_lang,item_text)
-  
-  return(res) 
-  }
+```{r load_entities}
+#Load dictionary
+ent<-readRDS("data/dict/worldgeo_def_V1.RDS")
 
+# Select language of definition
+ent <- ent[ent$lang=="fr",-1]
 
-```
-
-For example : 
-
-```{r}
-item_info(items[[1]])
-
+# Eliminate duplicated labels
+ent <- ent[duplicated(ent)==F,]
+ent <- ent[duplicated(ent$label)==F,]
+ent <- ent[duplicated(ent$code)==F,]
+# Visualize
+head(ent)
 ```
 
 
 
+### Load dictonary
 
+We start by loading the last version of the Imageun dictionary and we extract our target language (here : french).
 
-We build then a second function that extract all the wikipedia entities associated to a textual unit for a given language
+```{r load_dict}
+#Load dictionary
+dict<-readRDS("data/dict/worldgeo_dict_V4.RDS")
 
+# Eliminate wikipedia codes
+dict <- dict[dict$lang=="fr",-1]
 
-```{r}
-extract_entities <- function(mytext= "Afrique",
-                             mylang = "fr",
-                             maxres = 20) {
-  # Extract items
-  items <- find_item(search_term =  mytext,
-                   language      =  mylang,
-                   limit         =  maxres)
-  
-  # Create empty dataset
-  res<-data.frame()
-  res$item_id    <- as.character()
-  res$item_label <- as.character()
-  res$item_desc <- as.character()
-  res$item_lang  <- as.character()
-  res$item_text  <- as.character()
-  
-  # Fill dataset
-  k<-length(items)
-      for (i in 1:k) {
-           res <- rbind(res,item_info(items[[i]]))
-      }
-  
-  # Return dataset
-  return(res)
+# Eliminate duplicated labels
+dict <- dict[duplicated(dict)==F,]
+dict <- dict[duplicated(dict$label)==F,]
 
-}
+# Check if all codes are available
+dict <- dict[dict$code %in% ent$code,]
 
-  
+# Visualize
+head(dict)
 ```
 
-For example :
-
-```{r}
-tab <- extract_entities("Afrique","fr",20)
-kable(tab)
-```
-As we can see, many of the entities proposed in he list are not interesting and we will probably have to select one by one the entities of interest. But we have clearly to keep two different list of entities :
-
-- **the target entities** : that we consider as potential world regions or candidate to te title of "geographic imagination". 
-- **the control entites** : that we have to identify or eliminate if we want to identify correctly our target entities like the country of South Africa
-
-
-In the case of Africa, we could for example establish a more limited list
-
-```{r}
-entit <- c("Q15", "Q4412","Q132959", "Q27394","Q27407","Q27381","Q27433","Q258")
-
-tab<-tab %>% filter(item_id %in% entit)
-kable(tab)
-```
-
-But this list which was based on the french textual units associated to "Afrique" should certainly be completed by equivalent list established for other languages with different seeds ("Africa" in english, "Afrika" in german, ...)
-
-
-### Elaboration of a cross_linguistic dictionnary
-
-Admitting that we have established a list of wikipedia entities of interest, we can now turn to the creation of a dictionary for the identification of these entities in different languages. We will use for that purpose the powerful function `get_properties` 
-
-
-```{r}
-
-item_prop <- get_property("Q15")[[1]]
-
-
-
-```
-
-The result is a very large object (list of list) which provide all the informations (or links toward these information) in all languages wher the object is available. The problem is therefore to understand the structure of this object and to extract exactly what we need. In our case, we want to extract for each language of interest. 
-
-The information will be separated in two datasets :
-
-- dictionary of definitions
-- dictionary of labels and aliases
-
-We create two functions dedicated to each of the tasks
-
-
-```{r}
-extract_def <- function(item = c("Q15", "Q246"),
-                        langs = c("fr","de","en","tr")) {
-  # Create empty dataset
-  res<-data.frame()
-  res$id    <- as.character()
-  res$lang  <- as.character()
-  res$label <- as.character()
-  res$desc  <- as.character()
-  
-  
-  # Loop of items
-  n <- length(item)
-  for (i in 1:n) {
-    
-     # Extract item properties
-    item_prop <- get_property(item[i])[[1]]
-  
-   
-     # Loop  of language
-     p<-length(langs)
-     for (j in 1:p) {
-        id <- item[i]
-        lang  <- langs[j]
-        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value}
-           else { label <- NA}
-        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}
-           else { desc <- NA}
-        add <-data.frame(id,lang,label,desc)
-        res<- rbind(res,add) 
-        }
-  
-  }
-  # Export result
-return(res)
-
-}
-
-
-```
-
-The function works proprerly as long as the entities are available in all languages. It should be adapted to prevent errors when an entity is not available in one language. 
-
-```{r}
-entit <- c("Q15", "Q4412","Q132959", "Q27394","Q27407","Q27381","Q27433","Q258")
-
-
-tab<-extract_def(entit,c("fr","de","tr","en"))
-kable(tab)
-
-```
-
-### Extraction of aliases
-
-Now we have to extract the *aliases* which are two texts corresponding to the same entity in a given,language. For example, the Q27394 which correspond to the southern part of Africa (a subregion, not a country) is associated in spanish language to one main label and three equivalenbt alisases
-
-```{r}
-item_prop <- get_property("Q27394")[[1]]
-item_prop$labels$es$value
-item_prop$aliases$es
-```
-
-But in french language, no aliases are mentioned : 
-
-```{r}
-item_prop$labels$fr$value
-item_prop$aliases$fr
-```
-The fact that no aliases are mentioned in french language can be considered as non logical as compared to spanish language. And we could certainly imagine to add in french the translation of two spanish aliases: "*Afrique méridionale*", "*Sud de l'Afrique*". But we can not add "*Afrique du Sud*" because it is related in french to the state and not to the subregion.
-
-Despite the fact that they are not complete, the aliases are certainly a good solution when we want to obtain more efficient dictionaries. For example, if we want to obtain the state of southern Africa (Q258), we can complete the official label by 4 alias in french language and 3 aliases in spanish, taking into account the fact that the text is in upper orlowercase, withor without accent, ...
-
-```{r}
-item_prop <- get_property("Q258")[[1]]
-item_prop$labels$es$value
-item_prop$aliases$es
-item_prop$labels$fr$value
-item_prop$aliases$fr
-lang="fr"
-is.null(item_prop[["aliases"]][[lang]])!=F
-ali <- item_prop[["aliases"]][[lang]]$value
-n<-length(ali)
-for (i in 1:n) { print(ali[i])}
-
-```
-
-
-We propose therefore a function called `extract_alias` which propose for each entity of interest a list of texts and aliases adapte to each language. We do not store the definition which has been otained previously with the function `extract_def` :
-
-```{r}
-extract_alias <- function(items = c("Q15", "Q258"),
-                          langs = c("fr","de","en","tr")) {
-  # Create empty dataset
-  res<-data.frame()
-  res$id    <- as.character()
-  res$lang  <- as.character()
-  res$label <- as.character()
-
-  
-  # Loop of items
-  n <- length(items)
-  for (i in 1:n) {
-    
-     # Extract item properties
-    item_prop <- get_property(items[i])[[1]]
-  
-   
-     # Loop  of language
-     p<-length(langs)
-     for (j in 1:p) {
-        id <- items[i]
-        lang  <- langs[j]
-        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value} else { label <- NA}
-        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}else { desc <- NA}
-        add <-data.frame(id,lang,label)
-        res<- rbind(res,add) 
-           # Loop of aliases
-              if (is.null(item_prop[["aliases"]][[lang]])==F) {
-                ali <- item_prop[["aliases"]][[lang]]$value
-                n<-length(ali)
-               for (k in 1:n) {
-                        label <- ali[k]
-                        add <-data.frame(id,lang,label)
-                        res<- rbind(res,add) 
-                  }
-              }
-        
-        }
-  
-  }
-  # Export result
-return(res)
-
-}
-
-
-```
-
-
-Let's try the function on the case of the continent of "Africa" (Q15), the subregion "South of Africa" (Q27394) and the state of "Southern Africa" (Q258) in five languages : 
-
-
-```{r}
-tab<- extract_alias(items = c("Q15", "Q27394", "Q258"),
-              langs = c("fr","de","en","tr"))
-kable(tab)
-```
-
-
-The function works !
-
-### Conclusion
-
-It is now possible to develop a global research strategy for the analysis of world regions :
-
-**1. Define a set of target regions in one language** : In our example, it was based on the use of the term "Afrique" in french language, but we can imagine a different list.
-
-**2. Identify the code of the wikidata entities associated to this target regions** : We have generally a lot of entities of minor interest.
-
-**3. Identify the code of the other wikidata entities that should be added for control** : As we have seen, some entities are likely to create confusion and ambiguity  in the definition of target entities. This entity will be transformed in compound or eliminate from the text before to look for the target entities.
-
-**4. Extract the properties of the entities in the different languages of interest** : this step can be an opportunity to return to step 1. For example, it it appears that some subdivisions of Africa are available in english or german language but not in french.
-
-**5. Compare the definitions of Wikipedia entities in different languages** : it is important to check if the assumption of identity of the entities is correct or not. If not, some entities will be eliminated from the list. 
-
-**6. Extract the dictionary of recognition of entities** : which can be done in a multilanguage perspective. 
-
-It is obviously possible to apply the same procedure to different objects like states, capital cities, organizations, people, etc... 
-
-
-
-
-
-## Geographical tags (WHERE)
-
-We discuss in this section the steps (automatic or manual) that are requested for the creation of a dictionary of states, applied to the case of french language.
-
-
-### Link wikipedia entities with states
-
-
-
-```{r}
-ent<-read.table("data/states_codes.csv", 
-                sep=";",
-                header=T,
-                encoding = "UTF-8")
-kable(head(ent))
-```
-
-
-### Extract définitions
-
-We extract the definitions of the regions in one or different languages with the function *extract_def()*
-
-```{r, echo=FALSE}
-
-extract_def <- function(item = c("Q15", "Q246"),
-                        langs = c("fr","de","en","tr","ar")) {
-  # Create empty dataset
-  res<-data.frame()
-  res$id    <- as.character()
-  res$lang  <- as.character()
-  res$label <- as.character()
-  res$desc  <- as.character()
-  
-  
-  # Loop of items
-  n <- length(item)
-  for (i in 1:n) {
-    
-     # Extract item properties
-    item_prop <- get_property(item[i])[[1]]
-  
-   
-     # Loop  of language
-     p<-length(langs)
-     for (j in 1:p) {
-        id <- item[i]
-        lang  <- langs[j]
-        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value}
-           else { label <- NA}
-        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}
-           else { desc <- NA}
-        add <-data.frame(id,lang,label,desc)
-        res<- rbind(res,add) 
-        }
-  
-  }
-  # Export result
-return(res)
-
-}
-extract_alias <- function(items = c("Q15", "Q258"),
-                          langs = c("fr","de","en","tr","ar")) {
-  # Create empty dataset
-  res<-data.frame()
-  res$id    <- as.character()
-  res$lang  <- as.character()
-  res$label <- as.character()
-
-  
-  # Loop of items
-  n <- length(items)
-  for (i in 1:n) {
-    
-     # Extract item properties
-    item_prop <- get_property(items[i])[[1]]
-  
-   
-     # Loop  of language
-     p<-length(langs)
-     for (j in 1:p) {
-        id <- items[i]
-        lang  <- langs[j]
-        if(is.null(item_prop[["labels"]][[lang]]$value)==F) {label <- item_prop[["labels"]][[lang]]$value} else { label <- NA}
-        if(is.null(item_prop[["descriptions"]][[lang]]$value)==F) {desc <- item_prop[["descriptions"]][[lang]]$value}else { desc <- NA}
-        add <-data.frame(id,lang,label)
-        res<- rbind(res,add) 
-           # Loop of aliases
-              if (is.null(item_prop[["aliases"]][[lang]])==F) {
-                ali <- item_prop[["aliases"]][[lang]]$value
-                n<-length(ali)
-               for (k in 1:n) {
-                        label <- ali[k]
-                        add <-data.frame(id,lang,label)
-                        res<- rbind(res,add) 
-                  }
-              }
-        
-        }
-  
-  }
-  # Export result
-return(res)
-
-}
-```
-
-
-In our example, we extract the definition of the target entities in french language. This operation can take several minutes as the number of entities is important.
+### Load corpus
 
 ```{r, eval=FALSE}
-## NOT RUN : need several minutes !!!##
-wiki_def <- extract_def(ent$wiki,c("fr"))
-
-write.table(x = wiki_def,
-             row.names = FALSE,
-              file = "data/states_wiki_def.csv",
-              fileEncoding = "UTF-8",
-              sep = ";")
-saveRDS(object = wiki_def, file = "data/states_wiki_def.RDS")
-
+qd <- readRDS("data/corpus/qd_mycorpus.RDS")
 ```
 
+### Load tagging function
 
-
-```{r, echo=FALSE}
-wiki_def<-readRDS("data/states_wiki_def.RDS")
-kable(head(wiki_def))
-```
-
-The dictionary of entities is now available in the target language and we can verify manually that all definitions exist. It can indeed happen that a wikipedia entity is not defined in one or several language. In this case, it is necessary to complete manually. 
-
-
-
-### Extract of aliases and creation of wiki dictionary
-
-We will know extract the aliases of each wikipedia object in our target language. As in the previous case, the operation can take some minutes when the list of entities is long as in present case.
-
-```{r, eval=FALSE}
-## NOT RUN : very long time ...###
-wiki_def <- readRDS("data/states_wiki_def.RDS")
-
-wiki_dict <- extract_alias(wiki_def$id, c("fr"))
-
-write.table(x = wiki_dict,
-              row.names = FALSE,
-              file = "data/states_wiki_dict.csv",
-              fileEncoding = "UTF-8",
-              sep = ";")
-saveRDS(object = wiki_dict, file = "data/states_wiki_dict.RDS")
-
-```
-
-
-The list of alias is interesting for a better recognition of the states, as we can see with the example of Switzerland : 
-
-
-```{r, echo=FALSE}
-wiki_dict <- readRDS("data/states_wiki_dict.RDS")
-kable(wiki_dict[wiki_dict$id=="Q39",])
-```
-But the list has to be carefully checked and verified because Wikipedia can introduce a lot of terms that are ambiguous and could produce false positive. In particular, wikipedia introduce the ISO3 and ISO2 codes of states which can produce a lot of mistakes. Just consider the case of the ISO2 code of  Austria (*"AU"*) which will create a lot of false positive if we try to look for the word in lower case.  On the other hand, it is not possible to eliminate aliases based on a minimu number of characters because in this case we could eliminate *"EU"* if we are looking for European Union in english news. Finally it appears necessary :
-
-1. to examine manually the list of aliases and eliminate the one that are not relevant. 
-2. to identify aliases that are associated to several different entities and to decide either to eliminate them or to limit them to one wiki entity. For example "Singapour" should be allowed only to the state name or the city name. 
-3. to identify ambiguous cases that can not be solved automatically and desserve more sophisticated methods. As an example, it is impossible to decide automatically if "Brussels" is associated to Belgium or European Union in a news. 
-4. To be very careful with the apostroph  that can take different forms in terms of encoding. Personally we prefer to replace all forms of apostroph by a blank character but it can be a matter of debate.
-
-Once the manual work is finished the dictionary of wiki entities is updated with a new version number.
-
-```{r}
-wiki_dict <- read.table("data/states_wiki_dict_V2.csv",
-                      header = T,
-                      encoding = "UTF-8",
-                      sep=";")
-saveRDS(object = wiki_dict, file = "data/states_wiki_dict_V2.RDS")
-```
-
-
-### Creation of a unified dictionary of states
-
-In Wikipedia's ontology we have kept a distinction between entities related to states' names and entities related to capital cities of states. But it is possible that in our target ontology this distinction does no more exist and what we are looking for is a unified dictionary of states linked to an ISO3 code in order to produce map. In this case, we have to produce a dictionary of states that will merge names and capital city. To achieve this task we load our initial dictionary of states codes with the dictionary of wiki entities and we eliminate the duplicates.
-
-```{r}
-ent<-read.table("data/states_codes.csv", 
-                sep=";",
-                header=T,
-                encoding = "UTF-8")
-ent<-ent[,c(1,3,4,5)]
-
-wiki_dict<-wiki_dict <- read.table("data/states_wiki_dict_V2.csv",
-                      header = T,
-                      encoding = "UTF-8",
-                      sep=";")
-geo_dict<-merge(wiki_dict, ent, by.x="id",by.y="wiki",all.x=T,all.y=F)
-geo_dict<-unique(geo_dict)
-geo_dict<-geo_dict[order(geo_dict$iso3),]
-
-write.table(x = geo_dict,
-              row.names = FALSE,
-              file = "data/states_geo_dict.csv",
-              fileEncoding = "UTF-8",
-              sep = ";")
-saveRDS(object = geo_dict, file = "data/states_geo_dict.RDS")
-
-```
-
-
-
-We have obtained finally a dictionary where the column "label" is associated to  textual entities that can be associated to three different codes :
-
-- the Wikipedia entity 
-- the ISO3 code of states with the type of attribute (state or capital)
-- the ISO3 code of states
-
-It is therefore possible to use different strategies of states recognition in the analysis that will be further developed. Consider for example the case of Belgium :
-
-```{r}
-kable(geo_dict[geo_dict$iso3=="BEL",])
-```
-
-We can decide to recognize the country only by the name of the country, or we can combine both criteria or keep all labels except the first one because it is likely to be a metaphor of EU ...
-
-
-### Extract tags function
-
-
-We have  elaborated a function for the extraction of geographical units based on the dictionary elaborated in previous section (dict) according to the language (lang), the decision to split some tokens (split) to move or not to lower case (tolow)  and the possibility to add a list of compounds to be realized (comps) in order to eliminate ambiguities. 
-
-
-```{r}
+```{r func_annotate}
 extract_tags <- function(qd = qd,                      # the corpus of interest
                          lang = "fr",                  # the language to be used
                          dict = dict,                  # the dictionary of target 
                          code = "id" ,                  # variable used for coding
-                         name = "tags",                   #name of tags"
+                         tagsname = "tags",                 # name of the tags column
                          split  = c("'","’","-"),       # split list
                          tolow = FALSE  ,                # Tokenize text
                          comps = c("Afrique du sud")  # compounds
@@ -994,178 +405,493 @@ toks_tags <- tokens_lookup(toks, qd_dict, case_insensitive = F)
 toks_tags <- lapply(toks_tags, unique)
 toks_tags<-as.tokens(toks_tags)
 list_tags<-function(x){res<-paste(x, collapse=' ')}
-docvars(qd)[[name]]<-as.character(lapply(toks_tags,FUN=list_tags))
-docvars(qd)[[paste("nb_",name,sep="")]]<-ntoken(toks_tags)
+docvars(qd)[[tagsname]]<-as.character(lapply(toks_tags,FUN=list_tags))
+docvars(qd)[[paste("nb",tagsname,sep="")]]<-ntoken(toks_tags)
 
 
 
 # Export results
 return(qd)
  }
-            
 ```
 
-The function looks rather complex but its application is relatively simple. Let us apply it to the corpus of news that we have collected in the first part.
-
-### Identification of foreign states
-
-Here we decide to use the ISO3 code and to create a column of tag that will indicate the list of  states mentioned in each news and add a column indicating the number of states found. For the moment we keep the country where the newspaper is located in the list of countries identified.But wif we want to focus on *foreign* countries it will be possible to eliminate it later.
-
-```{r}
-
-dict<-readRDS("data/states_geo_dict.RDS")
 
 
+## Geographical annotation
 
-qd <- readRDS("data/fr_TUN_ecomag.RDS")
+### Annotate all entities
 
-docvars(qd)<-docvars(qd)[c("source","date")]
-qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
+In a first step, we annotate all geographic entities together in order to benefit from the cross-definition of their respective compounds. We will separate them by subcategories in a second step. 
 
-frcomps<-c("France Inter", "France Info","France Soir",
-           "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
+```{r annotate, eval=FALSE}
 
-qd <- extract_tags (qd = qd,
-                     lang="fr",
-                     dict = dict,
-                     code = "iso3",
-                     name = "states",
-                     split = c("'","’","-"),
-                     comps = frcomps,
-                     tolow = FALSE)
+# Less than 5 minutes for the tagging of 3 millions of sentences on a good PC computer.  
 
+t1<-Sys.time()
 
-saveRDS(qd,"data/fr_TUN_ecomag_geo.RDS")
-
-
-table(qd$nb_states)
-
-```
-
-### Validation of results
-
-For the validation of results, we extract from the quanteda object a table that contains only the text of news, the tags and the number of tags. You can see below the news where the most important number of foreign states has been found :
-
-
-```{r}
-check<-data.frame(text=as.character(qd),states=qd$states,nb_states=qd$nb_states)
-check<-check[order(check$nb_states,decreasing = T),]
-kable(check[1:10,])
-```
-Looking at this table, it is possible to check 
-
-- the existence of **false positive** i.e. countries that has been identified but are not present . In our small sample of news. For example, we notice here a false identification of Palestinian territories in the news 1285190782 which is due to the name *Azza* that has been added by Wikipedia to the dictionary as a label related to the city of Gaza.  
-
-- the existence of **false negative** i;e. countries that has not been identified but are present in the news according to an expert observer. For example, the Canada has not been identified in the news 1557214307 which is really mysterious as the label *Canada* is present in the dictionary. It can be due to the presence of an invisible character ? More logical is the fact that Nigeria is not identified in the news 	1942722871 because *Lagos* is not the capital city of these country and is not present in the dictionary.
-
-
-One more time, the manual analysis of results appears necessary and will certainly oblige to repeat several time the last stage of the pipeline until the elaboration of a sufficiently efficient dictionary. 
-
-## Topical tags (WHAT)
-
-
-### Brexit mean Brexit !
-
-The most simple case of definition of a topic is the case where it can be define by a single word. A good example of that can be the identification of news where the word "*Brexit*" is present. The problems of translation are generally limited in the majority of languages that use the same word than in English language or a single one.
-
-We can therefore create easily a dictionary with the minimum of columns required
-
-```{r}
-code =c("brex","brex")
-label=c("brexit","Brexit")
-lang = c("fr","fr")
-dict <- data.frame(code,label,lang)
-dict
-```
-
-Then we apply the function extract_tags that we have seen in the previous section :
-
-```{r}
-
-qd <- readRDS("data/fr_TUN_ecomag.RDS")
-
-qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
-
-frcomps<-c("France Inter", "France Info","France Soir",
+frcomps<-c("Europe 1", "Atlantic city", "Nantes-Atlantique",
+           "Loire-Atlantique", "Pyrénées-Atlantique", "Pyrénées-Atlantiques",
+           "Alpes-de-Haute-Provence", "Hautes-Alpes", "Rhône-Alpes","Alpes-Maritimes",
+           "Chantiers de l'Atlantique", "TGV Atlantique",
            "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
 
 qd <- extract_tags (qd = qd,
                      lang="fr",
                      dict = dict,
                      code = "code",
-                     name = "brex",
+                     tagsname = "geo",
                      split = c("'","’","-"),
                      comps = frcomps,
                      tolow = FALSE)
 
-table(qd$nb_brex)
+t2 = Sys.time()
+paste("Program executed in ", t2-t1)
 
-```
-
-The results are rather disappointing as we find only 7 news related to Brexit in our corpus. So we can have a look at this news but it is not interesting to store the tags :
-
-```{r}
-w<-tidy(corpus_subset(qd,nb_brex>0))
-kable(w)
-```
-
-### The Covid-19/Coronavirus crisis
-
-Considering the period of observation (2019-2021), we can expect more interesting results if we choose the pandemic of covid-19/coronavirus as target of our analysis. Here, the creation of the dictionary is a bit more complex because the pandemic has been qualified by different words or groups of words, with changes through time. We need therefore to analyze carefully the texts before to elaborate the dictionary. Let's start with a set of three words :
-
-```{r}
-code =c("cov","cov","cov","cov","cov","cov","cov")
-label=c("covid","Covid", "Covid-19", "covid-19","coronavirus", "Coronavirus","corona virus")
-lang = c("fr","fr","fr","fr","fr","fr","fr")
-dict <- data.frame(code,label,lang)
-kable(dict)
+table(qd$nbgeo)
 ```
 
 
-Then we apply the function extract_tags that we have seen in the previous section : 
+```{r,echo=FALSE}
+qd<-readRDS("data/corpus/qd_mycorpus_geo.RDS")
+table(qd$nbgeo)
+```
 
-```{r}
 
-qd <- readRDS("data/fr_TUN_ecomag.RDS")
+### Extract states codes
 
-qd<-corpus_subset(qd,duplicated(as.character(qd))==FALSE)
+```{r extract_states, eval = FALSE}
+state<-ent$code[ent$type %in% c("sta","cap")]
+test <- paste(state, collapse="|")
+x<-as.character(lapply(str_extract_all(qd$geo,paste(test, collapse = '|')), paste,collapse=" "))
+x<-gsub("ST_","",x)
+x<-gsub("CA_","",x)
+y<-tokens(x)
+y<-lapply(y, unique)
+list_tags<-function(x){res<-paste(x, collapse=' ')}
+docvars(qd)[["states"]]<-as.character(lapply(y,FUN=list_tags))
+docvars(qd)[["nbstates"]]<-ntoken(qd$states)
+```
 
-frcomps<-c("France Inter", "France Info","France Soir",
-           "Bourse de Paris", "Paris SG", "Ville de Paris", "Grand Paris")
+### check news with maximum state number
+
+```{r check_states_news}
+table(qd$nbstates)
+check<-corpus_subset(qd,nbstates>7)
+x<-data.frame(who=check$who,when = check$when,text=as.character(check),states=check$states,nbstates=check$nbstates)
+x<-x[order(x$nbstates,decreasing = T),]
+kable(x)
+```
+
+
+
+
+### Extract world region codes
+
+We do not distinguish so-called "geographical" regions (like "Europe") and "political" regions (like "European Union") and put them in the same catagory of world regions i.e. first level of organization under the world level and/or first level of agregation above state level.
+
+
+```{r extract_regions, eval=FALSE}
+region<-ent$code[ent$type %in% c("sea","land","cont","org")]
+test <- paste(region, collapse="|")
+x<-as.character(lapply(str_extract_all(qd$geo,paste(test, collapse = '|')), paste,collapse=" "))
+y<-tokens(x)
+y<-lapply(y, unique)
+list_tags<-function(x){res<-paste(x, collapse=' ')}
+docvars(qd)[["regions"]]<-as.character(lapply(y,FUN=list_tags))
+docvars(qd)[["nbregions"]]<-ntoken(qd$regions)
+table(qd$nbregions)
+
+```
+
+### Check news with maximum number of world regions
+
+```{r check_regions_news}
+table(qd$nbregions)
+check<-corpus_subset(qd,nbregions>2)
+x<-data.frame(who=check$who,when = check$when,text=as.character(check),regions=check$regions,nbregions=check$nbregions)
+x<-x[order(x$nbregions,decreasing = T),]
+kable(x)
+```
+
+### Check news with mixtures of more than 2 states and more than 1 world regions
+
+```{r check_states_regions_news}
+
+check<-corpus_subset(qd,nbregions>1 & nbstates >2)
+x<-data.frame(who=check$who,when = check$when,text=as.character(check),geo=check$geo,nbstates=check$nbstates, nbregions = check$nbregions)
+x<-x[order(x$nbstates*x$nbregions,decreasing = T),]
+kable(x)
+```
+
+
+### Save geographically anotated corpus
+
+```{r, eval=FALSE}
+saveRDS(qd,"data/corpus/qd_mycorpus_geo.RDS")
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo.RDS")/1000000,3), "Mo")
+```
+
+
+```{r, echo=FALSE}
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo.RDS")/1000000,3), "Mo")
+```
+
+
+
+# Thematic tags
+
+The aim of this section is to add to the quanteda corpus different metadata related to "thematic" tags i.e. topics that can be considered as related to the same same types of events but *without considering space and time*. In other words a thematic tag should not be related to an isolated crisis or an isolated country but to something more general that could take place anytime and anywhere. As an example, the earthquake from Nepal in April 2015 is not a topic but an event which belongs to the general category of news about seismic risk. The Ebola outbreak from western Africa is different because it is not an isolated event but a group of events spreading through space and time. It can therefore be considered as a sub-topic of the more general topic of pandemics. Finally the so-called "migrant crisis" that occurred in Europe in 2015 is certainly a mega-event but it is probably not a good idea to choose it as a topic. It is more interesting in this case to look for all news associated to the topic of "human mobility accross borders" and to search for news speaking from migrant, refugges or asylum seekers in all countries and at all periods of time. The problem of topic's definition is therefore firstly a conceptual problem and only in a second step a question of keywords and dictionary. It the topic is not well defined, iy will not be possible to propose a consistent and coherent method of identification of news related to the topic. 
+
+The thematic tags will be added to the corpus previously annotated by geographical units
+
+```{r, eval=FALSE}
+qd <-readRDS("data/corpus/qd_mycorpus_geo.RDS")
+```
+
+```{r,echo=FALSE}
+qd<-readRDS("data/corpus/qd_mycorpus_geo_top.RDS")
+table(qd$nbgeo)
+```
+
+
+## Load tagging function
+
+We can use exactly the same program of tagging than the one we have used previously for the tagging of geographical entities. The only condition is to prepare a dataframe with three columns
+
+- lang : the language associated to the dictionary
+- code : the tag to be used 
+- label: the words or groups of words to be recognized 
+
+
+
+
+## The pandemic topic
+
+### Dictionary
+
+We decide here to use lower case transformation. We use a star for the words that can take a plural form.
+
+```{r dico pandemic}
+label <- c("épidémie*", "pandémie*", "virus", "oms", "ébola", "ebola",  "h1n1","sras", "chikungunya", "choléra", "peste")
+code  <- rep("pand", length(label))
+lang  <- rep("fr", length(label))
+dict_pande <- data.frame(code,lang,label)
+kable(dict_pande)
+
+frcomps<-c("virus informatique")
+```
+
+
+### Annotation
+
+```{r annotate pandemic, eval=FALSE}
 
 qd <- extract_tags (qd = qd,
                      lang="fr",
-                     dict = dict,
+                     dict = dict_pande,
                      code = "code",
-                     name = "cov",
+                    tagsname = "pand",
                      split = c("'","’","-"),
                      comps = frcomps,
-                     tolow = FALSE)
+                     tolow = TRUE)
 
-table(qd$nb_cov)
+table(qd$nbpand)
 
 ```
-Now, more than 10% of the news are related to the pandemic and we can have a look at the first news published in the newspaper at the beginning of the crisis :
 
 
-```{r}
-w<-tidy(corpus_subset(qd,nb_cov>0))
-w<-w[order(w$date),]
-kable(head(w,20))
+### Visualization
+
+
+```{r visualization pandemic}
+x<-data.table(docvars(qd))
+x$tag<-x$nbpand !=0
+tab<-x[,.(tot=.N),by=.(month,tag, who)]
+tab<-tab[tab$tag==TRUE,]
+tab$month<-as.Date(tab$month)
+
+       
+       p<-ggplot(tab, aes(x=month,fill =who, y=tot))+
+         geom_bar(stat="identity")+
+         ggtitle(label ="Pandemic : distribution of tags by month and media",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
 ```
 
-The chronology of news defines an interesting storyline that deserve a qualitative analysis.But we can also try to have a quantitative view of the proportion of news related to the new pandemics during the period of observation.  
+## The quake topic
+
+### Dictionary
+
+We decide here to use lower case transformation. We use a star for the words that can take a plural form.
+
+```{r dico quake}
+label <- c("séisme*", "sismiqu*", "tremblement de terre", "tremblements de terre", "tsunami*", "USGS","échelle de Richter", "secousse tellurique")
+code  <- rep("quak", length(label))
+lang  <- rep("fr", length(label))
+dict_quak <- data.frame(code,lang,label)
+kable(dict_quak)
+
+frcomps<-c("séisme politique")
+```
+
+
+### Annotation
+
+```{r annotate quake, eval=FALSE}
+
+qd <- extract_tags (qd = qd,
+                     lang="fr",
+                     dict = dict_quak,
+                     code = "code",
+                    tagsname = "quak",
+                     split = c("'","’","-"),
+                     comps = frcomps,
+                     tolow = TRUE)
+
+table(qd$nbquak)
+
+```
+
+
+### Visualization
+
+
+```{r visualization quake}
+x<-data.table(docvars(qd))
+x$tag<-x$nbquak !=0
+tab<-x[,.(tot=.N),by=.(month,tag, who)]
+tab<-tab[tab$tag==TRUE,]
+tab$month<-as.Date(tab$month)
+
+       
+       p<-ggplot(tab, aes(x=month,fill =who, y=tot))+
+         geom_bar(stat="identity")+
+         ggtitle(label ="Earthquakes : distribution of tags by month and media",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
+```
+
+
+## The Migrant & Refugees topic
+
+### Dictionary
+
+In this last example, we introduce two subtopics corresponding to migrants and refugees or asylum seeker.The objective is to analyze a possibility of semantic shift. 
+
+```{r dictionary mobil}
+label <- c("migrant*", "émigrant*", "immigrant*", "migrat*", "réfugié*", "demandeur d'asile")
+code  <- c("migr","migr","migr","migr", "refu","refu")
+lang  <- rep("fr", length(label))
+dict_mobil <- data.frame(code,lang,label)
+kable(dict_mobil)
+
+frcomps<-c("oiseaux migrateurs")
+```
+
+
+### Annotation
+
+```{r annotate mobil, eval=FALSE}
+
+qd <- extract_tags (qd = qd,
+                     lang="fr",
+                     dict = dict_mobil,
+                     code = "code",
+                    tagsname = "mobil",
+                     split = c("'","’","-"),
+                     comps = frcomps,
+                     tolow = TRUE)
+
+table(qd$mobil)
+
+```
+
+
+### Visualization
+
+
+```{r visualization mobil}
+x<-data.table(docvars(qd))
+x$tag<-as.factor(x$mobil)
+levels(x$tag)<-c(NA,"Migrants","Migrants & Refugies", "Refugiés","Migrants & Refugies" )
+tab<-x[,.(tot=.N),by=.(month,tag)]
+tab<-tab[is.na(tab$tag)==FALSE,]
+tab$month<-as.Date(tab$month)
+
+       
+       p<-ggplot(tab, aes(x=month,fill =tag, y=tot))+
+         geom_bar(stat="identity")+
+         ggtitle(label ="Mobility : distribution of tags by month and qualification",
+                  subtitle = "1st Jan 2014 to 31th Dec.  2015")
+p
+```
+
+
+
+We store the quanteda file which combine geographical and thematic tags :
+
+```{r, eval=FALSE}
+saveRDS(qd,"data/corpus/qd_mycorpus_geo_top.RDS")
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo_top.RDS")/1000000,3), "Mo")
+```
+
+```{r, echo=FALSE}
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo_top.RDS")/1000000,3), "Mo")
+```
+
+
+
+# Hypercubes
+
+
+This section is based on the TELEMAC application elaborated during the H2020 projected ODYCCEUS and presented in the paper published in the journal *Frontiers* and available at https://analytics.huma-num.fr/Claude.Grasland/telemac/ 
+
+Our objective is to elaborate an hypercube organised by different dimensions. As an example, we suppose that we are interested in the analysis of the crisis of migrant and refugees (what) in different newspapers (who), at different period of time (when) and we want to explore the locations of countries that are mentioned (where) and eventually associated together (where1.where2). Finally we want to distinguish inside the news the possible changes of results if we consider the title or the first, second and third sentences of the description (order). 
+
+
+
+## Definition of dimensions
+
+
+To illustrate this different options, we can look at the example of a news published by the Algerian newspaper El Watan the 16th September 2015 and divided in a title and three sentences of description.
+
+
+```{r examp1}
+qd<-readRDS("data/corpus/qd_mycorpus_geo_top.RDS")
+
+examp<-corpus_subset(qd,docid(qd) == 9486265)
+
+kable(paste(examp))
+
+```
+
+
+Thanks to the previous operations of geographical and topical tagging, we can propose a simplified table where the text of the news has been removed and where we keep only the information of interest for the agregation procedure.
+
+```{r examp2}
+examp$id<-as.character(docid(examp))
+dtexamp<-data.table(tidy(examp)) %>% select(id=id, order = order, who = who, when=day, what=mobil, where1 = states, where2=states)
+kable(dtexamp)
+
+```
+
+The hypercube is the result of an aggregation of foreign news according several dimensions:
+
+-   **who** : this dimension is related to the variable which describe the media outlets which published the RSS feeds.
+Each source is related to a code`ll_sss_xxxxxx` where `ll`is the language, `sss`is the ISO3 code of the country and `xxxxxx`the name of the media. 
+For instance, a RSS feed produced by the Algerian newspaper *El Watan* is identified by the code who = `fr_DZA_elwata`. 
+Starting from there, it is then possible to proceed to aggregation of the data by group of languages (eg. computation of the indicators for all the French speaking newspapers) or countries (compute the indicators for all the media outlets located in Algeria).
+
+-   **when** : this dimension describe the day when an article of the RSS feeds has been published, according to a reference time zone (Paris in present case).
+Starting from the day, the data will be further aggregated according to different period of aggregation: weeks, months, quarters or years. . 
+For instance, by choosing to work on monthly aggregated data, the first period of observation for the news presented as example  will be: `when = 2015-09-01`. If we choose a division in weeks, we have to decide if the week start on Sunday (default option of R) or start on Monday (option adopted in present case)
+
+-   **where1** and **where2** : this dual dimension is associated to the cross-list of foreign countries detected by the country dictionary in the news. 
+For example the second sentence of our exampple ("*L’Allemagne, l’Autriche et la Slovaquie ont appelé, hier, à la tenue, dès la semaine prochaine, d’un conseil européen des chefs d’Etat et de gouvernement consacré à la crise migratoire.*") has produced a list of three places (*DEU,AUT,SVK*) associated to the cross-list of nine couple of places (*AUT-AUT, AUT-DEU, AUT-SVK, DEU-DEU, DEU-AUT, DEU-SVK, SVK-AUT, SVK-DEU, SVK-SVK*) where each couple will receive a weight of 1/9. It is important to keep in mind that the countries where the media are located (mentioned in the `who` dimension) should be excluded from the list if we decide to work only on foreign news. 
+
+-   **what** : In general, this dimension can be described as a boolean value (*TRUE/FALSE*) which precise if the news is associated or not to the topic of interest. For example the title and the two first sentences of our example are associated to the topic of international mobility but not the third sentence where the expected keywords has not been found. But if we have introduced subtopics, the situation is more complex because the news can be associated to different subtopics (as it was associated to different states).  For example the second sentence of the description (*"Après l’échec lundi de la réunion extraordinaire à Bruxelles des ministres de l’Intérieur de l’Union européenne (UE) sur la répartition des réfugiés par quotas, l’Allemagne, l’Autriche et la Slovaquie ont appelé hier à la tenue, dès la semaine prochaine, d’un conseil européen des chefs d’Etat et de gouvernement consacré à la crise migratoire, rapporte l’AFP"*) is associated to 2 subtopics (refug, migr) and 4 countries (BEL, AUT, DEU, SVK). It will therefore be broken in 2 x 4 x4 = 32 pieces of information, each of them associated to a value of 1/16th. 
+
+- **order** : To build the hypercube, it is possible to works on different size of text units: (`order=1`): the title or the first sentence, or (`order = 2,3,4, ...`): the title with the selected number of sentence of the description available. This parameter is important because some results, especially regarding the spatial dimension of the analysis (where) are more noticeable on longer texts. In our example, it is clear that the conclusions would be different if we had decided to focus only on the title which does not mention any country and is only associated to the subtopic of refugees. 
+
+
+
+## Aggregation function
+
+The elaboration of the hypercube is based on the crossing of all dimensions with one line for each singular combination. To do that, we have elaborated a specific function that combine all the 6 dimensions but can be easily adapted if less dimensions are needed. 
 
 ```{r}
-w<-docvars(qd) %>% mutate(time = cut(chrono$date,breaks = "month"),
-                          topic = as.factor(chrono$nb_cov !=0)) %>%
-                  count(time,topic) %>%
-                  plot_ly(x = ~time, y = ~n, color = ~topic) %>%
-                        add_bars() %>%
-                        layout(barmode = "stack")
 
-w
+#' @title create an hypercube
+#' @name hypercube
+#' @description create a network of interlinked states
+#' @param corpus a corpus of news in quanteda format
+#' @param order an order of sentences in the news
+#' @param who the source dimension
+#' @param when the time dimension
+#' @param timespan aggreation of time
+#' @param what a list of topics
+#' @param where1 a list of states
+#' @param where2  a list of states
+
+
+hypercube   <- function( corpus = qd,
+                        order = "order",
+                        who = "source",
+                        when = "when",
+                        timespan = "week",
+                        what = "what",
+                        where1 = "where1",
+                        where2 = "where2")
+{
+
+
   
+# prepare data
+
+  don<-docvars(corpus)
+  
+  df<-data.table(id     = docid(corpus),
+                 order  = don[[order]],
+                 who    = don[[who]],
+                 when   = don[[when]],
+                 what   = don[[what]],
+                 where1 = don[[where1]],
+                 where2 = don[[where2]])
+
+  # adjust id
+ df$id<-paste(df$id,"_",df$order,sep="")
+ 
+# change time span
+  df$when<-as.character(cut(as.Date(df$when), timespan, start.on.monday = TRUE))
+
+# unnest where1
+  df$where1[df$where1==""]<-"_no_"
+  df<-unnest_tokens(df,where1,where1,to_lower=F)
+  
+# unnest where2
+  df$where2[df$where2==""]<-"_no_"
+  df<-unnest_tokens(df,where2,where2,to_lower=F) 
+  
+# unnest what
+  df$what[df$what==""]<-"_no_"
+  df<-unnest_tokens(df,what,what,to_lower=F) 
+  
+
+
+# Compute weight of news
+  newswgt<-df[,list(wgt=1/.N),list(id)]
+  df <- merge(df,newswgt, by="id")
+
+
+# ------------------------ Hypercube creation --------------------#
+  
+  
+# Aggregate
+  hc<- df[,.(tags = .N, news=sum(wgt)) ,.(order,who, when,where1,where2, what)]
+  
+# Convert date to time
+  hc$when<-as.Date(hc$when)
+  
+# export
+  return(hc)
+  
+}
+
+```
+
+
+In order to test the function, we apply it firstly on our small example of the single news published by El Watan
+
+```{r}
+hc_examp<-hypercube( corpus   = examp,
+                    order    = "order",
+                    who      = "who",
+                    when     = "when",
+                    timespan = "day",
+                    what     = "mobil",
+                    where1   = "states",
+                    where2   = "states")
+kable(hc_examp)
 ```
 
 
@@ -1173,6 +899,275 @@ w
 
 
 
+
+
+
+- *order = 1* : the title is described by a single line because we have only one subtopic and no states mentioned. The weight of the line is 1. 
+- *order = 2* : the first sentence of description is characterized by one subtopic and three different states which produce 9 lines with weight of 1/9 = 0.111 news.
+- *order = 3* : the second sentence of description is characterized by two subtopic and four diffeent states which produce 32 lines with weight of 1/32 = 0.031 news.
+- *order = 4* : the last sentence of description is characterized by no topics  and no states which produce 1 lines with weight of 1.
+
+
+## Application
+
+Of course it is not interesting to transform a single news in such a large table. But it is of high interest if we realize the agregation on a large number of news. Because in this case the number of combination of dimensions is limited and we can obtain a synthetic table called hypercube that summarize all the information extracted from the news in a relatively small object. The time of computation of an hypercube can be relatively large and the memory size necessary to the intermediary step of disagregation can be important, but the resulting object is small and very adapted for a large number of exploration and modelisation methods.
+
+In practice, the function based on data.table package appears to be very fast as we can see in the following example 
+
+
+```{r, eval=FALSE}
+hc<-hypercube( corpus   = qd,
+                    order    = "order",
+                    who      = "who",
+                    when     = "when",
+                    timespan = "day",
+                    what     = "mobil",
+                    where1   = "states",
+                    where2   = "states")
+
+saveRDS(hc,"data/corpus/hc_mycorpus_states_mobil_day.RDS")
+paste("Size of resulting file = ",round(file.size("data/corpus/hc_mycorpus_states_mobil_day.RDS")/1000000,3), "Mo")
+```
+
+```{r, echo=FALSE}
+paste("Size of resulting file = ",round(file.size("data/corpus/hc_mycorpus_states_mobil_day.RDS")/1000000,3), "Mo")
+```
+
+
+We can see that the resulting object is rather small (0.3 Mo) which will make easier the production of visualization based on the crossing of the different dimensions.
+
+If we want to wok only at month level, the hypercube could be even smaller :
+
+```{r, eval=FALSE}
+hc<-hypercube( corpus   = qd,
+                    order    = "order",
+                    who      = "who",
+                    when     = "when",
+                    timespan = "month",
+                    what     = "mobil",
+                    where1   = "states",
+                    where2   = "states")
+
+saveRDS(hc,"data/corpus/hc_mycorpus_states_mobil_month.RDS")
+paste("Size of resulting file = ",round(file.size("data/corpus/hc_mycorpus_states_mobil_month.RDS")/1000000,3), "Mo")
+```
+
+
+```{r, echo=FALSE}
+paste("Size of resulting file = ",round(file.size("data/corpus/hc_mycorpus_states_mobil_month.RDS")/1000000,3), "Mo")
+```
+
+
+
+
+
+
+# Hypercubes exploration
+
+The different dimensions of an hypercube can be analysed through different aggregation of the dimensions of the hypercubes, leading to different tables authorizing different modes of visualization. Each function is named according to the dimensions that are combined. 
+
+```{r}
+source("pgm/hypernews_functions_V6.R")
+```
+
+
+We start here from the situation of a researcher interested by the topic of human mobility and we load the hypercube elaborated in the previous section. We decide to analyze the topic without distinction between migrants and refugees. 
+
+```{r}
+hc <- readRDS("data/corpus/hc_mycorpus_states_mobil_month.RDS")
+```
+
+## WHAT
+
+The first question (WHAT) is the evaluation of the proportion of news related to the topic.
+
+```{r what example ,warning = FALSE, message = FALSE}
+res_what <- what(hc = hc,
+             subtop = NA,
+             title = "Topic news")
+res_what$table
+res_what$plotly
+```
+
+The table indicate that 3154 news was associated to the topic which represent 2.72% of the total.
+
+
+
+## WHO.WHAT
+
+The second question (WHO.WHAT) explore the variation of interest for the topic in the different media of the corpus.
+
+
+### Example
+
+```{r who.what example,warning = FALSE, message = FALSE}
+
+
+res_who_what<- who.what(hc=hc, 
+                        test = FALSE,
+                        minsamp = 20,
+                        mintest = 5,
+                        title = "Topic news by media - Salience")
+
+kable(res_who_what$table)
+res_who_what$plotly 
+
+res_who_what<- who.what(hc=hc, 
+                        test = TRUE,
+                        minsamp = 5,
+                        mintest = 1,
+                        title = "Topic news by media - Significance")
+res_who_what$plotly
+
+```
+
+The analysis reveal a clear over-representation of the topic in the french newspaper *Le Figaro* (4.37% of news) as compared to the other media (2.1 to 2.5%). 
+
+
+## WHEN.WHAT
+
+The third question (WHEN.WHAT) is related to the evolution of the interest of all media from the corpus for the topic of interest through time.
+
+
+### Example
+
+```{r when.what example,warning = FALSE, message = FALSE}
+
+res_when_what<- when.what(hc=hc, 
+                          test=FALSE,
+                          minsamp=10,
+                          mintest=5,
+                          title = "Topic news by month - Salience")
+
+res_when_what$plotly
+
+
+res_when_what<- when.what(hc=hc, 
+                          test=TRUE,
+                          minsamp=10,
+                          mintest=5,
+                          title = "Topic news by month - Significance")
+res_when_what$plotly
+```
+The analysis reveals clear discontinuities in the timeline of the topic. We start with a low level (0.5 to 1.2%) from January 2014 to March 2015, followed by a brutal jump in April-June 2015 (3 to 5%) and a major peak in september 2015 (15.8% of news). At the end of the period, the level is clearly higher than at the beginning.  
+
+## WHERE.WHAT
+
+
+The fourth question (WHERE.WHAT) analyze the countries that are the most associated to the topic of interest. We exclude therefore the news where no countries are mentioned and we analyze for each country the proportion of news that are associated to the topic. 
+
+
+### Example
+
+```{r where.what example,warning = FALSE, message = FALSE}
+map<-readRDS("data/map/world_ctr_4326.Rdata")
+hc2<-hc %>% filter(where1 !="_no_", where2 !="_no_")
+res_where_what<- where.what(hc=hc2,
+                            test=FALSE,
+                            map = map, 
+                            minsamp=10,
+                            mintest =5,
+                            title = "Topic news by states - Salience")
+res_where_what$plotly
+
+res_where_what<- where.what(hc=hc2,
+                            test=TRUE,
+                            minsamp=10,
+                            map = map, 
+                            mintest =5,
+                            title = "Topic news by states - Significance")
+res_where_what$plotly
+```
+
+The analysis reveals that some countries are "specialized" in the topic during the period of observation. For example 53.5% of the news about Hungary was associated to the question of migrants and refugees, which is obviously related to the mediatization of the wall established by Viktor Orban in 2015. Other countries are characterized on the contrary by an under-representation of the topic like the USA where the topic is only associated to 0.7% of news. But the situation will change after Donald Trump's election who will also establish a wall which will dramatically increase the number of news about USA and migrants. 
+
+
+## WHEN.WHO.WHAT
+
+Despite our limited sample size, we can try to ask more complex question that combine three dimensions. We can for example examine the synchronization of media through time about the topic of interest (WHEN.WHO.WHAT).
+
+
+### Example
+
+```{r when.who.what example,warning = FALSE, message = FALSE}
+
+res_when_who_what<- when.who.what(hc=hc,
+                                  test = FALSE,
+                                  minsamp = 20,
+                                  mintest = 5,
+                                  title = "Topic news by month and by media - Salience")
+res_when_who_what$plotly
+
+res_when_who_what<- when.who.what(hc=hc,
+                                  test = TRUE,
+                                  minsamp = 20,
+                                  mintest = 5,
+                                  title = "Topic news by month and by media - Significance")
+res_when_who_what$plotly
+```
+
+The figure reveals a global synchronization of media agenda concerning the topic, especially concerning the major peak of interest located in september 2015. The first period of crisis of April 2015 is also visible in all media, with the exception of the belgian newspaper "Dernière Heure" which did not cover apparently the dramatic events of boat sinking in the Mediterranean more than usual. Another interesting difference can be observed for the two algerian newspapers that was characterized by an higher coverage of the topic during the year 2014.
+
+
+
+## WHERE.WHO.WHAT
+
+Another example of combination of the three dimensions can be realized by exploring if some countries are more mentioned by some media in relation with the topic of interest. In other words, do we observe a geographic synchronization of the agenda of media. 
+
+
+### Example
+
+```{r where.who.what example,warning = FALSE, message = FALSE}
+hc2<-hc %>% filter(where1 !="_no_", where2 !="_no_") %>% mutate(who=substr(who,4,6))
+res_where_who_what<- where.who.what(hc= hc2,
+                                    maxloc= 10,
+                                    test=FALSE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by media and by states - Salience")
+res_where_who_what$plotly
+
+res_where_who_what<- where.who.what(hc= hc2,
+                                    maxloc= 10,
+                                    test=TRUE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by media and by states - Salience")
+res_where_who_what$plotly
+
+```
+
+The analyse reveals that some countries are systematically associated to the topic by all media like Turkey or Greece. But other countries like Syria are associated to variable patterns of interest in relation with the topic: it is clearly more associated in Algeria, neutral in Belgium and less associated in France. 
+
+
+## WHEN.WHERE.WHAT
+
+The last case of combination of three dimensions concerns the time variation of the association between the topics and the countries through time. It can typically reveal the effect of dramatic event occuring in one country at a period of time. Unfortunately, the sample is too limited in size for an in depth exploration of crisis and we are obliged to limit our example to the comparison of the 8 quarters of years.
+
+### Function
+
+### Example
+
+```{r when.where.what example, warning = FALSE, message = FALSE}
+hc2<-hc %>% filter(where1 !="_no_", where2 !="_no_") %>% mutate(when=cut(when, breaks="quarte"))
+res_when_where_what<- when.where.what(hc=hc2,
+                                    maxloc= 10,
+                                    test=FALSE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by year and by states - Salience")
+res_when_where_what$plotly
+res_when_where_what<- when.where.what(hc=hc2,
+                                    maxloc= 10,
+                                    test=TRUE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by year and by states - Significance")
+res_when_where_what$plotly
+
+```
+
+The analysis confirms that in the majority of case, the most important association of countries with the topic took place in 2015 with a major peak in the third quarter (August-September-October). But some interesting exceptions can be observed, in particular in the case of Italy which was associated earlier to the question of migrants and refugees. But the analysis is difficult here because of the too important level of time aggregation. 
 
 
 
