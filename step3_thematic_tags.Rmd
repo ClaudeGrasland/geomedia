@@ -12,6 +12,7 @@ library(knitr)
 library(dplyr)
 library(quanteda)
 library(stringr)
+library(ggplot2)
 
 
 ```
@@ -23,10 +24,10 @@ library(stringr)
 
 The aim of this section is to add to the quanteda corpus different metadata related to "thematic" tags i.e. topics that can be considered as related to the same same types of events but *without considering space and time*. In other words a thematic tag should not be related to an isolated crisis or an isolated country but to something more general that could take place anytime and anywhere. As an example, the earthquake from Nepal in April 2015 is not a topic but an event which belongs to the general category of news about seismic risk. The Ebola outbreak from western Africa is different because it is not an isolated event but a group of events spreading through space and time. It can therefore be considered as a sub-topic of the more general topic of pandemics. Finally the so-called "migrant crisis" that occurred in Europe in 2015 is certainly a mega-event but it is probably not a good idea to choose it as a topic. It is more interesting in this case to look for all news associated to the topic of "human mobility accross borders" and to search for news speaking from migrant, refugges or asylum seekers in all countries and at all periods of time. The problem of topic's definition is therefore firstly a conceptual problem and only in a second step a question of keywords and dictionary. It the topic is not well defined, iy will not be possible to propose a consistent and coherent method of identification of news related to the topic. 
 
-The thematic tags will be added to the corpus previously annotated by geographical units
+The thematic tags will be added to the corpus previously annotated by geographical units.
 
 ```{r}
-qd <-readRDS("data/corpus/qd_mycorpus_geo.RDS")
+qd <-readRDS("data/corpus/qd_mycorpus_states.RDS")
 ```
 
 
@@ -43,10 +44,11 @@ We can use exactly the same program of tagging than the one we have used previou
 extract_tags <- function(qd = qd,                      # the corpus of interest
                          lang = "fr",                  # the language to be used
                          dict = dict,                  # the dictionary of target 
-                         code = "id" ,                  # variable used for coding
-                         tagsname = "tags",                 # name of the tags column
+                         code = "code" ,                # variable used for coding
+                         alias = "alias",               # variable used for alias
+                         tagsname = "states",           # name of the tags column
                          split  = c("'","’","-"),       # split list
-                         tolow = FALSE  ,                # Tokenize text
+                         tolow = TRUE  ,                # Tokenize text
                          comps = c("Afrique du sud")  # compounds
                          )
 { 
@@ -72,9 +74,8 @@ toks<-tokens_compound(toks,pattern=phrase(comps))
 # Load dictionaries and create compounds
 
   ## Target dictionary
-dict<-dict[dict$lang==lang & is.na(dict$label)==F,]
-target<-dict[ntoken(dict$label)>1,]
-labels <-dict$label
+
+labels <-dict[[alias]]
 if(length(split) > 0) { reg<-paste(split, collapse = '|')
                        labels<- gsub(reg," ",labels)}  
 if(tolow)       {labels <- tolower(labels)}  
@@ -127,6 +128,7 @@ qd <- extract_tags (qd = qd,
                      lang="fr",
                      dict = dict_pande,
                      code = "code",
+                     alias = "label",
                     tagsname = "pand",
                      split = c("'","’","-"),
                      comps = frcomps,
@@ -180,7 +182,8 @@ qd <- extract_tags (qd = qd,
                      lang="fr",
                      dict = dict_quak,
                      code = "code",
-                    tagsname = "quak",
+                     alias = "label",
+                     tagsname = "quak",
                      split = c("'","’","-"),
                      comps = frcomps,
                      tolow = TRUE)
@@ -234,6 +237,7 @@ qd <- extract_tags (qd = qd,
                      lang="fr",
                      dict = dict_mobil,
                      code = "code",
+                    alias = "label",
                     tagsname = "mobil",
                      split = c("'","’","-"),
                      comps = frcomps,
@@ -268,8 +272,8 @@ p
 We store the quanteda file which combine geographical and thematic tags :
 
 ```{r}
-saveRDS(qd,"data/corpus/qd_mycorpus_geo_top.RDS")
-paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_geo_top.RDS")/1000000,3), "Mo")
+saveRDS(qd,"data/corpus/qd_mycorpus_states_topics.RDS")
+paste("Size of resulting file = ",round(file.size("data/corpus/qd_mycorpus_states_topics.RDS")/1000000,3), "Mo")
 ```
 
 

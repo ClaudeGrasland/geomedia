@@ -1,0 +1,259 @@
+---
+title: "Geographical analysis of media"
+subtitle: "5. Hypercubes exploration"
+author: "Claude Grasland"
+output: html_notebook
+---
+
+
+```{r setup2, echo = FALSE,  warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE,  warning = FALSE, message=FALSE)
+source("pgm/hypernews_functions_V6.R")
+```
+
+
+
+
+# Hypercubes exploration
+
+The different dimensions of an hypercube can be analysed through different aggregation of the dimensions of the hypercubes, leading to different tables authorizing different modes of visualization. Each function is named according to the dimensions that are combined. 
+
+We start here from the situation of a researcher interested by the topic of human mobility and we load the hypercube elaborated in the previous section. We decide to analyze the topic without distinction between migrants and refugees. 
+
+```{r}
+hc <- readRDS("data/corpus/hc_mycorpus_states_mobil_day.RDS")
+```
+
+But the analysis by day is not necessary the most relevant and we can decide to create the same hypercube aggregated by week, month, quarter or year. The operation is done very easily with the package data.table.
+
+```{r}
+# store distribution by day
+hc_day<-hc
+
+# Agregation by week
+hc<-hc_day
+hc$when <- cut(hc$when,breaks="week")
+hc_week <-hc[,.(news=sum(news),tags=sum(tags)),list(who,when,where1,where2,what)]
+
+# Agregation by month
+hc<-hc_day
+hc$when <- cut(hc$when,breaks="month")
+hc_month <-hc[,.(news=sum(news),tags=sum(tags)),list(who,when,where1,where2,what)]
+
+# Agregation by quarter
+hc<-hc_day
+hc$when <- cut(hc$when,breaks="quarter")
+hc_quarter <-hc[,.(news=sum(news),tags=sum(tags)),list(who,when,where1,where2,what)]
+
+# Agregation by year
+hc<-hc_day
+hc$when <- cut(hc$when,breaks="year")
+hc_year <-hc[,.(news=sum(news),tags=sum(tags)),list(who,when,where1,where2,what)]
+
+```
+
+
+## WHAT
+
+The first question (WHAT) is the evaluation of the proportion of news related to the topic.
+
+```{r ,warning = FALSE, message = FALSE}
+res_what <- what(hc = hc,
+             subtop = NA,
+             title = "Topic news")
+res_what$table
+res_what$plotly
+```
+
+The table indicate that 3154 news was associated to the topic which represent 2.73% of the total.
+
+
+
+## WHO.WHAT
+
+The second question (WHO.WHAT) explore the variation of interest for the topic in the different media of the corpus.
+
+
+### Example
+
+```{r who.what example,warning = FALSE, message = FALSE}
+
+
+res_who_what<- who.what(hc=hc, 
+                        test = FALSE,
+                        minsamp = 20,
+                        mintest = 5,
+                        title = "Topic news by media - Salience")
+
+kable(res_who_what$table)
+res_who_what$plotly 
+
+res_who_what<- who.what(hc=hc, 
+                        test = TRUE,
+                        minsamp = 5,
+                        mintest = 1,
+                        title = "Topic news by media - Significance")
+res_who_what$plotly
+
+```
+
+The analysis reveal a clear over-representation of the topic in the french newspaper *Le Figaro* (4.37% of news) as compared to the other media (2.1 to 2.5%). 
+
+
+## WHEN.WHAT
+
+The third question (WHEN.WHAT) is related to the evolution of the interest of all media from the corpus for the topic of interest through time. Here we can choose different levels of time agregation.
+
+
+### Example
+
+```{r when.what example,warning = FALSE, message = FALSE}
+
+res_when_what<- when.what(hc=hc_week, 
+                          test=FALSE,
+                          minsamp=10,
+                          mintest=5,
+                          title = "Topic news by week - Salience")
+
+res_when_what$plotly
+
+
+res_when_what<- when.what(hc=hc_week, 
+                          test=TRUE,
+                          minsamp=10,
+                          mintest=5,
+                          title = "Topic news by week - Significance")
+res_when_what$plotly
+```
+The analysis reveals clear discontinuities in the timeline of the topic with isolated periods of crisis in 2014 followed by a giant peak at the end of the summer 2015.   
+
+## WHERE.WHAT
+
+
+The fourth question (WHERE.WHAT) analyze the countries that are the most associated to the topic of interest. We exclude therefore the news where no countries are mentioned and we analyze for each country the proportion of news that are associated to the topic. 
+
+
+### Example
+
+```{r where.what example,warning = FALSE, message = FALSE}
+map<-readRDS("data/map/world_ctr_4326.Rdata")
+hc2<-hc %>% filter(where1 !="_no_", where2 !="_no_")
+res_where_what<- where.what(hc=hc2,
+                            test=FALSE,
+                            map = map, 
+                            minsamp=10,
+                            mintest =5,
+                            title = "Topic news by states - Salience")
+res_where_what$plotly
+
+res_where_what<- where.what(hc=hc2,
+                            test=TRUE,
+                            minsamp=10,
+                            map = map, 
+                            mintest =5,
+                            title = "Topic news by states - Significance")
+res_where_what$plotly
+```
+
+The analysis reveals that some countries are "specialized" in the topic during the period of observation. For example 53.5% of the news about Hungary was associated to the question of migrants and refugees, which is obviously related to the mediatization of the wall established by Viktor Orban in 2015. Other countries are characterized on the contrary by an under-representation of the topic like the USA where the topic is only associated to 0.7% of news. But the situation will change after Donald Trump's election who will also establish a wall which will dramatically increase the number of news about USA and migrants. 
+
+
+## WHEN.WHO.WHAT
+
+Despite our limited sample size, we can try to ask more complex question that combine three dimensions. We can for example examine the synchronization of media through time about the topic of interest (WHEN.WHO.WHAT) We decide here to use a large time span because of the reduction of the sample
+
+
+### Example
+
+```{r when.who.what example,warning = FALSE, message = FALSE}
+
+res_when_who_what<- when.who.what(hc=hc_month,
+                                  test = FALSE,
+                                  minsamp = 20,
+                                  mintest = 5,
+                                  title = "Topic news by month and by media - Salience")
+res_when_who_what$plotly
+
+res_when_who_what<- when.who.what(hc=hc_month,
+                                  test = TRUE,
+                                  minsamp = 20,
+                                  mintest = 5,
+                                  title = "Topic news by month and by media - Significance")
+res_when_who_what$plotly
+```
+
+The figure reveals a global synchronization of media agenda concerning the topic, especially concerning the major peak of interest located in september 2015. The first period of crisis of April 2015 is also visible in all media, with the exception of the belgian newspaper "Dernière Heure" which did not cover apparently the dramatic events of boat sinking in the Mediterranean more than usual. Another interesting difference can be observed for the two algerian newspapers that was characterized by an higher coverage of the topic during the year 2014.
+
+
+
+## WHERE.WHO.WHAT
+
+Another example of combination of the three dimensions can be realized by exploring if some countries are more mentioned by some media in relation with the topic of interest. In other words, do we observe a geographic synchronization of the agenda of media. 
+
+
+### Example
+
+```{r where.who.what example,warning = FALSE, message = FALSE}
+hc2<-hc %>% filter(where1 !="_no_", where2 !="_no_") %>% mutate(who=substr(who,4,6))
+res_where_who_what<- where.who.what(hc= hc2,
+                                    maxloc= 20,
+                                    test=FALSE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by media and by states - Salience")
+res_where_who_what$plotly
+
+res_where_who_what<- where.who.what(hc= hc2,
+                                    maxloc= 20,
+                                    test=TRUE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by media and by states - Salience")
+res_where_who_what$plotly
+
+```
+
+The analyse reveals that some countries are systematically associated to the topic by all media like Syria, Italy or Libya.  Other countries are associated to migrants but not systematically like United Kingdom which iis associated to the topic by belgian newspapers but not by french and algerian ones.
+
+
+## WHEN.WHERE.WHAT
+
+The last case of combination of three dimensions concerns the time variation of the association between the topics and the countries through time. It can typically reveal the effect of dramatic event occuring in one country at a period of time. Unfortunately, the sample is too limited in size for an in depth exploration of crisis and we are obliged to limit our example to the comparison of the 8 quarters of years.
+
+### Function
+
+### Example
+
+```{r when.where.what example, warning = FALSE, message = FALSE}
+
+res_when_where_what<- when.where.what(hc=hc_quarter,
+                                    maxloc= 15,
+                                    test=FALSE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by year and by states - Salience")
+res_when_where_what$plotly
+res_when_where_what<- when.where.what(hc=hc_quarter,
+                                    maxloc= 15,
+                                    test=TRUE,
+                                    minsamp=5,
+                                    mintest=2,
+                                    title = "Topic news by year and by states - Significance")
+res_when_where_what$plotly
+
+```
+
+The analysis confirms that in the majority of case, the most important association of countries with the topic took place in 2015 with a major peak in the third quarter of this year (August-September-October). But some interesting exceptions can be observed, in particular in the case of Italy or Iraq which was yet strongly associated to the question of migrants and refugees in spring and sumer 2014. But the sample size is too limited for a detailed analysis with smaller divisions of time.
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -12,6 +12,7 @@ library(knitr)
 library(dplyr)
 library(data.table)
 library(visNetwork, quietly = T)
+library(sf)
 ```
 
 
@@ -26,12 +27,22 @@ library(visNetwork, quietly = T)
 
 ```{r}
 # Load complete hypercube
-hc <- readRDS("data/corpus/hc_mycorpus_states_mobil_month.RDS")
+hc <- readRDS("data/corpus/hc_mycorpus_states_mobil_day.RDS")
 hc <- hc %>% filter(where1 !="_no_", where2 != "_no_")
 
-# Add french labels
-labs<-read.table("data/dict/worldgeo_label_fr.csv", sep=";",header=T, encoding = "UTF-8")
-labs<-labs[,c(5,3)]
+# Eliminate non foreign news (french news for french newspapers ...)
+hc<-hc[hc$where1 != substr(who,4,6),]
+hc<-hc[hc$where2 != substr(who,4,6),]
+
+# Add complete labels
+map<-readRDS("dict/world_map_4326.Rdata")
+labs<-st_drop_geometry(map)
+labs<-don[,c(1,4)]
+
+# Shorten the name of USA
+labs$NAME[labs$ISO3=="USA"]<-"U.S.A."
+
+
 names(labs)<-c("where1","geofr1")
 hc<-left_join(hc,labs)
 names(labs)<-c("where2","geofr2")
@@ -252,10 +263,12 @@ net
 ```
 
 
-## Analyse networks
+## Network analysis
 
 
-### States x States : all newspapers & all periods & all topics
+### Reference network
+
+We can firstly realize a network that combine all periods of time (when), all media (who) and all topics (what), which provide a reference for the next analysis.
 
 ```{r}
 hc<-hc_geo_geo 
@@ -282,16 +295,98 @@ mod<-rand_int(int,
               resid = TRUE,
               diag = FALSE)
 
-sum(mod$Fij)
+
 network<- geo_network(mod,
                       size = "Fij",
-                      minsize = sum(mod$Fij/1000),
+                      minsize = 30,
                       test = "Rchi_ij",
                       mintest = 3.84)
 network
 
-
-visSave(network, "regions_regions_lmonde.html")
 ```
+- **Comment** : The network is a combination of *structural proximity* (countries that are linked by relation not related to the period of observation) and *event linkage* related to specific events or crisis that has produced temporary connections generally not observed. The preferential linkage between Israël and Palestine is typically a structural linkage but the association between Liberia, Guinea and Sierra Leone has been induced by the Ebola outbreak. The strong linkage between Ukraine and Russia is a combination of the two types of effects. 
+
+
+
+### Focus on a media
+
+We can isolate a specific media like El Watan in order to examine to what extent his network is different fromthe reference network. But the parameters of selections has to be adapted because the size of the sample is smaller. 
+
+```{r}
+hc<-hc_geo_geo %>% filter(who == "fr_DZA_elwata")
+
+
+
+hc<-hc_filter(don = hc,
+                             wgt = "tags",
+                             where1 = "geofr1",
+                             where2 = "geofr2",
+                             where1_exc = c("_no_"),
+                             where2_exc = c("_no_"),
+                             self = FALSE
+                           )
+
+int <- build_int(don = hc,
+                 s1=2,
+                 s2=2,
+                 n1=1,
+                 n2=1,
+                 k=0)
+
+mod<-rand_int(int,
+              resid = TRUE,
+              diag = FALSE)
+
+
+network<- geo_network(mod,
+                      size = "Fij",
+                      minsize = 10,
+                      test = "Rchi_ij",
+                      mintest = 3.84)
+network
+
+```
+- **Comments :** The network of prefernetial associations from El Watan is clearly more concentrated than the reference network on Mediterranean countries, Middle East and Africa. We notice specific relations related to geopolitical conflicts where Algeria is directly concerned (Morocco - Spain - Western Sahara). We can also notice that the so-called "European Migrant crisis" is less covered when it is related to Balkans.
+
+
+### Focus on a topic
+
+We can also propose a focus on the countries that has been specifically associated in relation with a topic. For example, the topic of migrants and refugees. We are oblige to reduce one more time the different thresholds as the number of news is very limited, but the result is interesting.
+
+```{r}
+hc<-hc_geo_geo %>% filter(what != "_no_")
+
+
+
+hc<-hc_filter(don = hc,
+                             wgt = "tags",
+                             where1 = "geofr1",
+                             where2 = "geofr2",
+                             where1_exc = c("_no_"),
+                             where2_exc = c("_no_"),
+                             self = FALSE
+                           )
+
+int <- build_int(don = hc,
+                 s1=1,
+                 s2=1,
+                 n1=1,
+                 n2=1,
+                 k=0)
+
+mod<-rand_int(int,
+              resid = TRUE,
+              diag = FALSE)
+
+
+network<- geo_network(mod,
+                      size = "Fij",
+                      minsize = 3,
+                      test = "Rchi_ij",
+                      mintest = 3.84)
+network
+
+```
+- **Comments :** We can indeed recognize the different events related to the crossing of borders by migrants or refugees. We recognize without surprise the major events occuring in the Mediterranean. But the network reveals also othe crisis occuring in central America (miogrants from Cuba to USA) or in southern Asia (Rohyngias crisis)
 
 
