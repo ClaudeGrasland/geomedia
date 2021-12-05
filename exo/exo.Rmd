@@ -210,6 +210,8 @@ head(dict)
 
 ```{r}
 qd <- readRDS("data/corpus/qd_mycorpus.RDS")
+
+
 ```
 
 ### Load tagging function
@@ -284,7 +286,10 @@ return(qd)
 
 
 ```{r annotate, eval=FALSE}
-
+# small correction
+texts<-gsub(" US"," United States", qd)
+texts<-gsub("US ","United States ", texts)
+qd<-corpus(texts,docvars = docvars(qd))
 
 
 t1<-Sys.time()
@@ -420,7 +425,7 @@ return(qd)
 We decide here to use lower case transformation. We use a star for the words that can take a plural form. We had of course covid and coronavirus 
 
 ```{r dico pandemic}
-label <- c("pandemic*", "epidemic*", "virus", "world health organisation", "ebola",  "h1n1","sras", "chikungunya", "cholera", "flu", "covid*","coronavirus")
+label <- c("pandemic*", "epidemic*", "virus", "world health organisation", "ebola",  "h1n1","sras", "chikungunya", "cholera", "flu", "covid*","coronavirus", "sars*","ncov*")
 code  <- rep("pand", length(label))
 lang  <- rep("en", length(label))
 dict_pande <- data.frame(code,lang,label)
@@ -1283,8 +1288,8 @@ hc <- readRDS("data/corpus/hc_mycorpus_states_pand.RDS")
 hc <- hc %>% filter(where1 !="_no_", where2 != "_no_")
 
 # Eliminate non foreign news 
-hc<-hc[hc$where1 != substr(who,4,6),]
-hc<-hc[hc$where2 != substr(who,4,6),]
+#hc<-hc[hc$where1 != substr(who,4,6),]
+#hc<-hc[hc$where2 != substr(who,4,6),]
 
 # Add complete labels
 map<-readRDS("data/dico_states/world_map_4326.Rdata")
